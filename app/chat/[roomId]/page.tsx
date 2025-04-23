@@ -1,6 +1,6 @@
 "use client"
 import React, { useState, useEffect, useRef } from 'react'
-import { useParams , useRouter  } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { io } from "socket.io-client"
@@ -9,7 +9,36 @@ import { useUser } from "@clerk/clerk-react"
 import axios from "axios"
 import MonacoEditor from '@/components/MonacoEditor'
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { LogOut } from "lucide-react"
+import { Check, Code, LogOut, Send, RefreshCw, User, Users, Terminal } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
+
+const cursorStyles = `
+  .remote-cursor-decoration {
+    background-color: #ff000050;
+    width: 2px !important;
+    margin-left: 0;
+    border-left: 2px solid red;
+  }
+  .remote-cursor-margin {
+    width: 5px;
+    background-color: red;
+  }
+  
+  /* Custom color themes for different users */
+  .remote-cursor-user1 { border-left-color: #FF5733; }
+  .remote-cursor-user2 { border-left-color: #33FF57; }
+  .remote-cursor-user3 { border-left-color: #3357FF; }
+  .remote-cursor-user4 { border-left-color: #F033FF; }
+  .remote-cursor-user5 { border-left-color: #FF33A8; }
+`;
+
+// Add a style tag to the document
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.innerHTML = cursorStyles;
+  document.head.appendChild(style);
+}
 
 // Create socket connection
 const socket = io("http://localhost:8000", {
@@ -67,14 +96,24 @@ export default function Page() {
   const { user } = useUser();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [code, setCode] = useState('// Start coding here...\n');
+  const [code, setCode] = useState('# Start coding here...\n\n# Example Python code\ndef greet(name):\n    return f"Hello, {name}!"\n\n# Print greeting\nprint(greet("CodeCollab User"))\n');
   const editorRef = useRef<any>(null);
   const [remoteCursors, setRemoteCursors] = useState<
     { userId: string; lineNumber: number; column: number }[]
   >([]);
   const [userNumber, setUserNumber] = useState(0);
+  const [output, setOutput] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState('python');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  console.log(user);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
@@ -85,7 +124,9 @@ export default function Page() {
       });
     }
   };
-
+  
+  const decorationIdsRef = useRef<string[]>([]);
+  
   // Handle editor mounting and cursor tracking
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -97,31 +138,31 @@ export default function Page() {
         roomId, 
         lineNumber, 
         column, 
-        username: user?.fullName 
+        username: user?.fullName
       });
     });
 
     // Visualize remote cursors using Monaco decorations
     const updateDecorations = () => {
       if (editor && monaco) {
-        const decorations = remoteCursors.map((cursor) => ({
+        const decorations = remoteCursors.map((cursor, index) => ({
           range: new monaco.Range(cursor.lineNumber, cursor.column, cursor.lineNumber, cursor.column),
           options: {
             isWholeLine: false,
-            className: `remote-cursor-${cursor.userId.replace(/[^a-zA-Z0-9]/g, '')}`,
-            hoverMessage: { value: `User: ${cursor.userId}` },
+            className: `remote-cursor-user${(index % 5) + 1}`,
+            hoverMessage: { value: `${cursor.userId} is here` },
           },
         }));
-        editor.deltaDecorations([], decorations);
+        decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, decorations);
       }
     };
 
-    // Update decorations periodically
+    // Update decorations more frequently
     updateDecorations();
-    const interval = setInterval(updateDecorations, 100);
+    const interval = setInterval(updateDecorations, 50);
     return () => clearInterval(interval);
   };
-
+ 
   const handleLogout = () => {
     // Emit leave_room event to the server
     if (roomId && user?.fullName) {
@@ -132,6 +173,33 @@ export default function Page() {
     router.push('/dashboard');
   };
 
+  const runCode = async () => {
+    try {
+      setIsRunning(true);
+      setOutput('Running code...');
+      
+      if (typeof code !== "string" || !code) {
+        throw new Error("Invalid code: Code must be a non-empty string");
+      }
+  
+      const response = await api.post("/run", {
+        code: code,
+        language: selectedLanguage,
+      });
+  
+      setOutput(response.data.output || "Code executed successfully with no output");
+    } catch (error:any) {
+      console.error("Error running code:", error);
+      if (error.response) {
+        setOutput(`Error: ${error.response.data.error || error.response.data.details || 'Execution failed'}`);
+      } else {
+        setOutput(`Error: ${error.message || 'Failed to run code'}`);
+      }
+    } finally {
+      setIsRunning(false);
+    }
+  };
+  
   // Load existing messages and code
   useEffect(() => {
     const loadMessages = async () => {
@@ -192,7 +260,7 @@ export default function Page() {
       }
     });
     
-    // Listen for user count updates - fixed property name
+    // Listen for user count updates
     socket.on("user_count", (data: { count: number, roomId: string }) => {
       setUserNumber(data.count);
     });
@@ -231,83 +299,148 @@ export default function Page() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Chat Section */}
-      <div className="flex flex-col w-1/3 border-r overflow-hidden">
-        <div className="p-4 border-b">
-          <h2 className="text-xl font-semibold">Chat Room: {roomId}</h2>
-          <div className='flex justify-between'>
-          <div className="flex gap-1 items-center">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <p className="text-xs">Active Users: {userNumber}</p>
+    <div className="flex flex-col h-screen bg-background">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-3 border-b bg-secondary/20">
+        <div className="flex items-center gap-2">
+          <Code className="h-5 w-5 text-primary" />
+          <h1 className="text-xl font-bold">CodeCollab</h1>
+          <Separator orientation="vertical" className="h-6 mx-2" />
+          <div className="text-sm text-muted-foreground">Room: <span className="font-semibold text-foreground">{roomId}</span></div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-green-500" />
+            <span className="text-sm font-medium">{userNumber} Active</span>
           </div>
           <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleLogout}
-              className="flex items-center gap-1"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Leave</span>
+            variant="outline" 
+            size="sm" 
+            onClick={handleLogout}
+            className="flex items-center gap-1"
+          >
+            <LogOut className="h-4 w-4" />
+            <span>Leave Room</span>
           </Button>
-          </div>
         </div>
-        
-        <ScrollArea className="flex-1 p-4 overflow-hidden">
-          <div className="space-y-4">
-            {messages.map((msg) => {
-              const isUser = msg.username === user?.fullName;
-              const time = new Date(msg.createdAt).toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              });
-
-              return (
-                <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[75%] rounded-lg px-4 py-2 relative ${
-                      isUser
-                        ? 'bg-primary text-primary-foreground rounded-br-none'
-                        : 'bg-muted text-foreground rounded-bl-none'
-                    }`}
-                  >
-                    <div className="text-sm font-medium mb-1">{msg.username}</div>
-                    <div className="text-sm">{msg.message}</div>
-                    <div className="text-xs mt-1 opacity-70 text-right">{time}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </ScrollArea>
-
-        <form onSubmit={handleSubmit} className="p-4 border-t">
-          <div className="flex gap-2">
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1"
-            />
-            <Button type="submit">Send</Button>
-          </div>
-        </form>
       </div>
 
-      {/* Code Editor Section */}
-      <div className="flex flex-col w-2/3">
-        <div className="p-4 border-b">
-          <h2 className="text-xl font-semibold">Code Editor</h2>
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left panel - Chat */}
+        <div className="flex flex-col w-1/3 border-r">
+          <div className="p-3 border-b bg-secondary/10 flex items-center justify-between">
+            <h2 className="text-md font-medium flex items-center gap-2">
+              <User className="h-4 w-4" /> Chat
+            </h2>
+          </div>
+          
+          <ScrollArea className="flex-1 px-3 py-2">
+            <div className="space-y-4 pb-2">
+              {messages.map((msg) => {
+                const isUser = msg.username === user?.fullName;
+                const time = new Date(msg.createdAt).toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                });
+
+                return (
+                  <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[80%] rounded-lg px-3 py-2 relative ${
+                        isUser
+                          ? 'bg-primary text-primary-foreground rounded-br-none'
+                          : 'bg-muted text-foreground rounded-bl-none'
+                      }`}
+                    >
+                      <div className="text-xs font-medium mb-1">{isUser ? 'You' : msg.username}</div>
+                      <div className="text-sm whitespace-pre-wrap break-words">{msg.message}</div>
+                      <div className="text-xs mt-1 opacity-70 text-right">{time}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+
+          <form onSubmit={handleSubmit} className="p-3 border-t bg-background">
+            <div className="flex gap-2">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1"
+              />
+              <Button type="submit" size="icon">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </form>
         </div>
-        <div className="flex-1">
-          <MonacoEditor
-            height="100%"
-            defaultLanguage="python"
-            value={code}
-            onChange={handleEditorChange}
-            theme="vs-dark"
-            onMount={handleMount}
-          />
+
+        {/* Right panel - Editor & Output */}
+        <div className="flex flex-col w-2/3">
+          <Tabs defaultValue="editor" className="flex flex-col flex-1">
+            <div className="p-2 border-b bg-secondary/10">
+              <div className="flex justify-between items-center">
+                <TabsList>
+                  <TabsTrigger value="editor" className="flex items-center gap-1">
+                    <Code className="h-4 w-4" />
+                    Editor
+                  </TabsTrigger>
+                  <TabsTrigger value="output" className="flex items-center gap-1">
+                    <Terminal className="h-4 w-4" />
+                    Output
+                  </TabsTrigger>
+                </TabsList>
+                
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="text-xs border rounded px-2 py-1 bg-background"
+                  >
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                  </select>
+                  <Button 
+                    variant="default" 
+                    size="sm" 
+                    onClick={runCode}
+                    disabled={isRunning}
+                    className="flex items-center gap-1"
+                  >
+                    {isRunning ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+                    <span>Run Code</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            <TabsContent value="editor" className="flex-1 p-0 m-0 overflow-hidden">
+              <MonacoEditor
+                height="100%"
+                defaultLanguage={selectedLanguage}
+                value={code}
+                onChange={handleEditorChange}
+                theme="vs-dark"
+                onMount={handleMount}
+              />
+            </TabsContent>
+            
+            <TabsContent value="output" className="flex-1 p-0 m-0 overflow-hidden">
+              <div className="h-full overflow-auto bg-black p-4">
+                <pre className="text-sm text-green-400 font-mono whitespace-pre-wrap">
+                  {output || "Code output will appear here after running"}
+                </pre>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>

@@ -1,12 +1,21 @@
 import http from "http";
+import os from "os";
 import express from "express";
 import cors from "cors";
 import { Server } from "socket.io";
 import { PrismaClient } from '@prisma/client';
+import Docker from "dockerode";
+import bodyParser from "body-parser";
+import fs from "fs";
+import { v4 as uuidv4 } from "uuid";
+
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
+const docker = new Docker({ host: "localhost", port: 2375 });
+app.use(bodyParser.json());
+
 
 // Initialize Prisma client
 const prisma = new PrismaClient();
@@ -158,6 +167,89 @@ app.get('/api/rooms/:roomId/users', (req, res) => {
   }
 });
 
+app.post("/api/run", async (req, res) => {
+  console.log("Received /api/run request:", req.body);
+  const { language, code } = req.body;
+
+  // Validate input
+  if (!language || !code || typeof code !== "string") {
+    return res.status(400).json({
+      error: "Invalid input",
+      details: "Both 'language' and 'code' are required, and 'code' must be a string",
+    });
+  }
+
+  // Validate language
+  if (!["python", "javascript"].includes(language)) {
+    return res.status(400).json({
+      error: "Unsupported language",
+      details: "Language must be 'python' or 'javascript'",
+    });
+  }
+
+  const fileId = uuidv4();
+  const fileName = `${fileId}.${language === "python" ? "py" : "js"}`;
+  const tempFile = `${os.tmpdir()}\\${fileName}`; // Use os.tmpdir() and backslash for Windows
+
+  try {
+    // Ensure the temp directory exists
+    const tempDir = os.tmpdir();
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    // Write code to temporary file
+    console.log("Writing to temp file:", tempFile); // Debug log
+    fs.writeFileSync(tempFile, code);
+
+    const image = language === "python" ? "python:3.10" : "node:18";
+
+    // Create and configure Docker container
+    const container = await docker.createContainer({
+      Image: image,
+      Cmd: language === "python"
+        ? ["python", `/code/${fileName}`]
+        : ["node", `/code/${fileName}`],
+      HostConfig: {
+        Binds: [`${tempFile}:/code/${fileName}`], // Use absolute path
+        NetworkMode: "none",
+        AutoRemove: true,
+        Memory: 128 * 1024 * 1024,
+      },
+    });
+
+    // Attach to container output
+    const stream = await container.attach({
+      stream: true,
+      stdout: true,
+      stderr: true,
+    });
+    let output = "";
+    stream.on("data", (data) => (output += data.toString()));
+
+    // Start and wait for container
+    await container.start();
+    await container.wait();
+
+    res.json({ output });
+  } catch (err) {
+    console.error("Execution error:", err);
+    res.status(500).json({
+      error: "Execution failed",
+      details: err.message,
+    });
+  } finally {
+    // Clean up temporary file
+    try {
+      if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+        console.log("Temp file deleted:", tempFile);
+      }
+    } catch (err) {
+      console.error("Error deleting temp file:", err);
+    }
+  }
+});
 // Initialize Socket.io
 const io = new Server(server, {
   cors: { origin: "*" },

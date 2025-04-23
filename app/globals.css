@@ -135,3 +135,11 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.527 0.154 150.069);
 }
+[class^="remote-cursor-"]::after {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 100%;
+  background-color: red;
+  z-index: 10;
+}
