@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Room {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  messages  Message[] // Cascading delete will apply
+  code      Code?
+  createdAt DateTime  @default(now())
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  username  String
+  roomId    Int
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade) // Add onDelete: Cascade
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model Code {
+  id        Int      @id @default(autoincrement())
+  code      String
+  roomId    Int      @unique
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade) // Add onDelete: Cascade
+}
