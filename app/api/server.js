@@ -366,6 +366,36 @@ app.get('/api/rooms/:roomId/code', async (req, res) => {
   }
 });
 
+app.get('/api/rooms/:roomId/owner', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await prisma.room.findUnique({
+      where: {
+        id: parseInt(roomId)
+      },
+      include: {
+        owner: true // Include the owner relation
+      }
+    });
+
+    if (!room) {
+      return res.status(404).json({
+        error: "Room not found",
+        details: "No room exists with the provided ID"
+      });
+    }
+
+    // Just return the owner's clerk ID
+    res.json(room.owner.clerkId);
+  } catch (error) {
+    console.error("Error fetching room owner:", error);
+    res.status(500).json({ 
+      error: "Failed to fetch room owner",
+      details: error.message 
+    });
+  }
+});
+
 // Add an endpoint to get active users in a room
 app.get('/api/rooms/:roomId/users', (req, res) => {
   try {

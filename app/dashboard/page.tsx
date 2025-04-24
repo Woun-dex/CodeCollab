@@ -30,6 +30,7 @@ import { auth } from "@clerk/nextjs/server" ;
 
 
 
+
 const socket = io("http://localhost:8000");
 
 // Create axios instance with base URL
@@ -74,10 +75,15 @@ export default function Page(){
   const { user } = useUser();
   const router = useRouter();
 
+  
+  
+  
+
   const handleJoinRoom = (roomId: number) => {
     socket.emit("join_room", { roomId, username: user?.username });
     router.push(`/chat/${roomId}`);
   };
+
 
   const handleDelete = async (roomId: number) => {
     try {
@@ -139,7 +145,7 @@ export default function Page(){
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b">
+        <header className="flex h-16 bg-[#1E1E1E] shrink-0 items-center gap-2 border-b">
           <div className="flex items-center gap-2 px-3">
             <SidebarTrigger />
             <Separator orientation="vertical" className="mr-2 h-4" />

@@ -12,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Check, Code, LogOut, Send, RefreshCw, User, Users, Terminal , Save } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { error } from 'console'
 
 const cursorStyles = `
   .remote-cursor-decoration {
@@ -107,6 +108,7 @@ export default function Page() {
   const [isRunning_s, setIsRunning_s] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('python');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [ isowner , setisOwner] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -175,6 +177,7 @@ export default function Page() {
   };
 
   const saveCode = async () => {
+    if (isowner) {
     try {
       setIsRunning_s(true);
       if (typeof code!== "string" ||!code) {
@@ -191,6 +194,7 @@ export default function Page() {
     } finally {
       setIsRunning_s(false);
     }
+  }
   }
 
   const runCode = async () => {
@@ -247,6 +251,23 @@ export default function Page() {
       loadCode();
     }
   }, [roomId]);
+
+  useEffect ( () => {
+    const owner = async () => {
+      try {
+        const response = await api.get(`/rooms/${roomId}/owner`);
+        // Check if the response data matches the user id
+        if (response.data === user?.id) {
+          setisOwner(true);
+        }
+      }
+      catch (error) {
+        console.error("Error loading owner:", error);
+      }
+    };
+
+    owner();
+  }, [user])
 
   // Socket connection and event handlers
   useEffect(() => {
@@ -317,6 +338,8 @@ export default function Page() {
     });
     setNewMessage("");
   };
+  console.log(user?.id);
+  console.log(isowner);
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -333,6 +356,12 @@ export default function Page() {
             <Users className="h-4 w-4 text-green-500" />
             <span className="text-sm font-medium">{userNumber} Active</span>
           </div>
+          {isowner && 
+          <div className='p-1 px-2 rounded-lg bg-green-400 text-green-900 text-xs'>
+            Owner
+          </div>
+          
+          }
           <Button 
             variant="outline" 
             size="sm" 
@@ -442,7 +471,7 @@ export default function Page() {
                     variant="default" 
                     size="sm" 
                     onClick={saveCode}
-                    disabled={isRunning_s}
+                    disabled={isRunning_s && !isowner }
                     className="flex items-center gap-1"
                   >
                     {isRunning_s ? (

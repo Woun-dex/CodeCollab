@@ -9,6 +9,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useState , useEffect} from "react";
+import { useUser  } from "@clerk/clerk-react";
+import axios from "axios";
 
 interface RoomCardProps {
     name: string;
@@ -17,9 +20,40 @@ interface RoomCardProps {
     deleteClick: (numberId:number) => void;
 }
 
+const api = axios.create({
+  baseURL: "http://localhost:8000/api",
+});
+
 type CardProps = React.ComponentProps<typeof Card>
 
 export function CardDemo({ className, numberId,name , handleClick, deleteClick , ...props }: CardProps & RoomCardProps) {
+  const [ isowner , setisOwner ] = useState(false);
+  const { user } = useUser();
+
+  useEffect ( () => {
+    const owner = async () => {
+      try {
+        const response = await api.get(`/rooms/${numberId}/owner`);
+        // Check if the response data matches the user id
+        if (response.data === user?.id) {
+          setisOwner(true);
+        }
+      }
+      catch (error) {
+        console.error("Error loading owner:", error);
+      }
+    };
+
+    owner();
+  }, [user])
+
+  const deleteroom = () => {
+
+    if ( isowner) {
+      deleteClick(numberId);
+    }
+  }
+  
   return (
     <Card className={cn("w-[230px]", className)} {...props}>
       <CardHeader>
@@ -31,9 +65,9 @@ export function CardDemo({ className, numberId,name , handleClick, deleteClick ,
         <Button className="w-full" onClick={() => handleClick(numberId)}>
           <Check /> Enter Room
         </Button>
-        <span className="cursor-pointer" onClick={() => deleteClick(numberId)}>
-  <Trash className="text-red-700 cursor-pointer" />
-</span>
+        <span className="cursor-pointer" onClick={() => deleteroom()}>
+        <Trash  className="text-red-700 cursor-pointer" />
+      </span>
 
         </div>
         

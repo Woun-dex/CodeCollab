@@ -1,3 +1,4 @@
+"use client"
 import * as React from "react"
 import { GalleryVerticalEnd } from "lucide-react"
 import { useUser } from "@clerk/clerk-react";
@@ -40,7 +41,7 @@ const data = {
     },
     {
       title: "About",
-      url: "#",
+      url: "/about",
       
     },
     {
