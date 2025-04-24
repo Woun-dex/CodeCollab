@@ -8,6 +8,7 @@ import Docker from "dockerode";
 import bodyParser from "body-parser";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
+const { verifyWebhook } = require('@clerk/nextjs/webhooks');
 
 
 // Initialize Express app
@@ -34,6 +35,131 @@ async function testConnection() {
 app.use(express.json());
 app.use(cors());
 
+
+app.post('/api/webhooks', async (req, res) => {
+  try {
+    const evt = await verifyWebhook(req, {
+      signingSecret: process.env.CLERK_WEBHOOK_SIGNING_SECRET,
+    });
+
+    const { id, type, data } = evt;
+
+    console.log(`Received webhook: ID=${id}, Type=${type}`);
+
+    if (type === 'user.created' || type === 'user.updated') {
+      const { id: clerkId, email_addresses, first_name, last_name, unsafe_metadata, profile_image_url } = data;
+
+      const email = email_addresses[0]?.email_address || '';
+      // Generate username from email or unsafe_metadata, ensure uniqueness
+      let username = unsafe_metadata?.username || email.split('@')[0] || `user_${clerkId}`;
+      // Check for username uniqueness
+      const existingUser = await prisma.user.findUnique({ where: { username } });
+      if (existingUser && existingUser.clerkId !== clerkId) {
+        username = `${username}_${clerkId.slice(0, 8)}`;
+      }
+
+      const bio = unsafe_metadata?.bio || null;
+      const profilePicture = profile_image_url || null;
+
+      await prisma.user.upsert({
+        where: { clerkId },
+        update: {
+          email,
+          username,
+          firstName: first_name || '',
+          lastName: last_name || '',
+          bio,
+          profilePicture,
+        },
+        create: {
+          clerkId,
+          email,
+          username,
+          firstName: first_name || '',
+          lastName: last_name || '',
+          bio,
+          profilePicture,
+        },
+      });
+
+      console.log(`User ${type === 'user.created' ? 'created' : 'updated'}: clerkId=${clerkId}, email=${email}`);
+    } else if (type === 'user.deleted') {
+      const { id: clerkId } = data;
+      await prisma.user.delete({
+        where: { clerkId },
+      }).catch(err => {
+        if (err.code === 'P2025') {
+          console.warn(`User not found for deletion: clerkId=${clerkId}`);
+        } else {
+          throw err;
+        }
+      });
+      console.log(`User deleted: clerkId=${clerkId}`);
+    }
+
+    return res.status(200).send('Webhook received');
+  } catch (err) {
+    console.error('Webhook error:', err);
+    if (err instanceof PrismaClientKnownRequestError) {
+      if (err.code === 'P2002') {
+        return res.status(400).send('Duplicate email or username');
+      }
+    }
+    return res.status(400).send('Error processing webhook');
+  }
+});
+
+
+
+app.get('/api/user/:clerkId', async (req, res) => {
+  try {
+    const { clerkId } = req.params;
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+    });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json(user);
+  }
+  catch (error) {
+    console.error("Error fetching user:", error);
+    res.status(500).json({
+      error: "Failed to fetch user",
+      details: error.message
+    });
+  }
+});
+
+app.put('/api/user/:clerkId', async (req, res) => {
+  try {
+    const { clerkId } = req.params;
+    const { username, firstName, lastName, email , profilePicture } = req.body;
+    if (!username || !firstName || !lastName || !email || !profilePicture) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+    const updatedUser = await prisma.user.update({
+      where: { clerkId },
+      data: {
+        username,
+        firstName,
+        lastName,
+        email,
+        profilePicture
+      }
+    })
+    res.json(updatedUser);
+
+  }
+  catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({
+      error: "Failed to update user",
+      details: error.message
+    });
+  }
+})
+
 // Rooms routes
 app.get('/api/rooms', async (req, res) => {
   try {
@@ -48,18 +174,22 @@ app.get('/api/rooms', async (req, res) => {
   }
 });
 
+
 app.post('/api/rooms', async (req, res) => {
   try {
-    const { roomName } = req.body;
+    const { roomName , userId } = req.body;
     if (!roomName || typeof roomName !== 'string') {
       return res.status(400).json({ 
         error: "Invalid room name",
         details: "Room name is required and must be a string"
       });
     }
+    const owner = await prisma.user.findUnique({
+      where: { clerkId: userId },
+    });
 
     const room = await prisma.room.create({
-      data: { name: roomName },
+      data: { name: roomName , ownerId: owner.id },
     });
     res.status(201).json(room);
   } catch (error) {
@@ -250,6 +380,32 @@ app.post("/api/run", async (req, res) => {
     }
   }
 });
+
+app.post("/api/save" , async (req, res) => {
+  const { roomId, code } = req.body;
+  console.log("Received /api/save request:", req.body);
+  if (!roomId ||!code) {
+    return res.status(400).json({
+      error: "Invalid input",
+      details: "Both 'roomId' and 'code' are required",
+    });
+  }
+  try {
+    const savedCode = await prisma.code.upsert({
+      where: { roomId: parseInt(roomId) },
+      update: { code: code },
+      create: { roomId: parseInt(roomId), code: code },
+    });
+    res.json({ message: "Code saved successfully", savedCode });
+  } catch (error) {
+    console.error("Error saving code:", error);
+    res.status(500).json({
+      error: "Failed to save code",
+      details: error.message,
+    });
+  }
+}
+);
 // Initialize Socket.io
 const io = new Server(server, {
   cors: { origin: "*" },
@@ -363,17 +519,6 @@ testConnection().then(() => {
           console.error("Missing required fields for code sync:", { roomId, code });
           return;
         }
-
-        await prisma.code.upsert({
-          where: { roomId: parseInt(roomId) }, // Find by roomId
-          update: {
-            code: code, // Update the code field
-          },
-          create: {
-            roomId: parseInt(roomId), // Create with roomId
-            code: code, // Initial code content
-          },
-        });
 
         io.to(roomId).emit("receive_code", { code });
         console.log("Code broadcasted to room:", roomId);

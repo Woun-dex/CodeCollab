@@ -9,7 +9,7 @@ import { useUser } from "@clerk/clerk-react"
 import axios from "axios"
 import MonacoEditor from '@/components/MonacoEditor'
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Check, Code, LogOut, Send, RefreshCw, User, Users, Terminal } from "lucide-react"
+import { Check, Code, LogOut, Send, RefreshCw, User, Users, Terminal , Save } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 
@@ -104,6 +104,7 @@ export default function Page() {
   const [userNumber, setUserNumber] = useState(0);
   const [output, setOutput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+  const [isRunning_s, setIsRunning_s] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('python');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -172,6 +173,25 @@ export default function Page() {
     // Redirect to home or rooms list page
     router.push('/dashboard');
   };
+
+  const saveCode = async () => {
+    try {
+      setIsRunning_s(true);
+      if (typeof code!== "string" ||!code) {
+        throw new Error("Invalid code: Code must be a non-empty string");
+      }
+
+      const response = await api.post("/save", {
+        code: code,
+        roomId: roomId,
+      });
+      console.log("Code saved successfully:", response.data);
+    } catch (error:any) {
+      console.error("Error saving code:", error);
+    } finally {
+      setIsRunning_s(false);
+    }
+  }
 
   const runCode = async () => {
     try {
@@ -417,6 +437,20 @@ export default function Page() {
                       <Check className="h-4 w-4" />
                     )}
                     <span>Run Code</span>
+                  </Button>
+                  <Button 
+                    variant="default" 
+                    size="sm" 
+                    onClick={saveCode}
+                    disabled={isRunning_s}
+                    className="flex items-center gap-1"
+                  >
+                    {isRunning_s ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    <span>Save Code</span>
                   </Button>
                 </div>
               </div>

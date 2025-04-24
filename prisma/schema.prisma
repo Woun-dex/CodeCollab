@@ -7,19 +7,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id              Int       @id @default(autoincrement())
+  clerkId         String    @unique
+  email           String    @unique
+  username        String    @unique
+  firstName       String
+  lastName        String
+  bio             String?
+  profilePicture  String?
+  createdAt       DateTime  @default(now())
+  rooms           Room[]    @relation("OwnedRooms")
+  roles           Role[]    @relation("UserRoles")
+}
+
 model Room {
   id        Int       @id @default(autoincrement())
   name      String    @unique
-  messages  Message[] // Cascading delete will apply
+  messages  Message[] @relation("RoomMessages")
   code      Code?
   createdAt DateTime  @default(now())
+  roles     Role[]    @relation("RoomRoles")
+  ownerId   Int
+  owner     User      @relation("OwnedRooms", fields: [ownerId], references: [id], onDelete: Cascade)
 }
 
 model Message {
   id        Int      @id @default(autoincrement())
   username  String
   roomId    Int
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade) // Add onDelete: Cascade
+  room      Room     @relation("RoomMessages", fields: [roomId], references: [id], onDelete: Cascade)
   message   String
   createdAt DateTime @default(now())
 }
@@ -28,5 +45,13 @@ model Code {
   id        Int      @id @default(autoincrement())
   code      String
   roomId    Int      @unique
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade) // Add onDelete: Cascade
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model Role {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  room      Room     @relation("RoomRoles", fields: [roomId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -1,6 +1,8 @@
 import * as React from "react"
 import { GalleryVerticalEnd } from "lucide-react"
 import { useUser } from "@clerk/clerk-react";
+import { useState } from "react";
+import axios from "axios";
 
 import {
   Sidebar,
@@ -16,12 +18,19 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
+const api = axios.create({
+  baseURL: "http://localhost:8000/api",
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
 // This is sample data.
 const data = {
   navMain: [
     {
       title: "Dashboard",
-      url: "#",
+      url: "/dashboard",
       
     },
     {
@@ -36,15 +45,32 @@ const data = {
     },
     {
       title: "User",
-      url: "#",
+      url: "/user",
       
     },
   ],
 }
 
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
+  const [user_, setUser] = useState<any>(null);
   const { user } = useUser();
+
+
+  React.useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const response = await api.get(`/user/${user?.id}`);
+        setUser(response.data);
+      } catch (error) {
+        console.error("Error fetching user:", error);
+      }
+    };
+    fetchUser();
+  }, [user]);
+
+
 
   return (
     <Sidebar {...props}>
@@ -80,11 +106,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
       </SidebarContent>
       <div className=" p-4 flex gap-2 items-center">
-      <img className="rounded-full w-8 h-8" src={user?.imageUrl} alt="" />
+      <img className="rounded-full w-10 h-10" src={user_?.profilePicture} alt="" />
       <div>
 
-      <p className="text-xs">User : {user?.fullName}</p>
-      <p className="text-xs">email : {user?.primaryEmailAddress?.emailAddress}</p>
+      <p className="text-xs"><span className="font-semibold">Username</span> : {user_?.username}</p>
+      <p className="text-xs"><span className="font-semibold">Email</span> : {user_?.email}</p>
       </div>
       </div>
       <SidebarRail />

@@ -5,6 +5,7 @@ import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { CardDemo } from "@/components/cards"
 import { Redirect } from "next"
+
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -24,6 +25,10 @@ import { useUser } from "@clerk/clerk-react";
 import axios from "axios";
 import { redirect } from "next/dist/server/api-utils"
 import { useRouter } from "next/navigation";
+import { auth } from "@clerk/nextjs/server" ;
+
+
+
 
 const socket = io("http://localhost:8000");
 
@@ -63,7 +68,7 @@ interface Room {
   name: string;
 }
 
-export default function Page() {
+export default function Page(){
   const [roomName, setRoomName] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
   const { user } = useUser();
@@ -90,7 +95,7 @@ export default function Page() {
     if (!roomName.trim()) return; // Don't create empty rooms
     
     try {
-      const { data: newRoom } = await api.post("/rooms", { roomName });
+      const { data: newRoom } = await api.post("/rooms", { roomName , userId: user?.id  });
       setRooms(prevRooms => [...prevRooms, newRoom]);
       setRoomName("");
     } catch (error) {
