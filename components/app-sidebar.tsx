@@ -60,13 +60,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   React.useEffect(() => {
     const fetchUser = async () => {
-      try {
-        const response = await api.get(`/user/${user?.id}`);
-        setUser(response.data);
-      } catch (error) {
-        console.error("Error fetching user:", error);
+      if (user && user.id) {  // Only proceed if user and user.id exist
+        try {
+          const response = await api.get(`/user/${user.id}`);
+          setUser(response.data);
+        } catch (error) {
+          console.error("Error fetching user:", error);
+        }
       }
     };
+    
     fetchUser();
   }, [user]);
 

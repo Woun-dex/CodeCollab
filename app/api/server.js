@@ -1,4 +1,6 @@
 import http from "http";
+import multer from 'multer';
+import path from 'path';
 import os from "os";
 import express from "express";
 import cors from "cors";
@@ -34,6 +36,96 @@ async function testConnection() {
 
 app.use(express.json());
 app.use(cors());
+
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Configure multer storage
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    // Create unique filename with original extension
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'profile-' + uniqueSuffix + ext);
+  }
+});
+
+// File filter to only allow image files
+const fileFilter = (req, file, cb) => {
+  // Accept only image files
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed!'), false);
+  }
+};
+
+// Set up multer upload
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max file size
+  },
+  fileFilter: fileFilter
+});
+
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+// Handle file upload endpoint
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Create the URL for the uploaded file
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    
+    // Return the file URL
+    res.status(200).json({
+      success: true,
+      message: "File uploaded successfully",
+      url: fileUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error("Error uploading file:", error);
+    res.status(500).json({
+      error: "Failed to upload file",
+      details: error.message
+    });
+  }
+});
+
+// Error handling middleware for multer errors
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    // A Multer error occurred when uploading
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        error: "File size too large",
+        details: "Maximum file size is 5MB"
+      });
+    }
+    return res.status(400).json({
+      error: "File upload error",
+      details: err.message
+    });
+  } else if (err) {
+    // An unknown error occurred
+    return res.status(500).json({
+      error: "Server error",
+      details: err.message
+    });
+  }
+  next();
+});
 
 
 app.post('/api/webhooks', async (req, res) => {
