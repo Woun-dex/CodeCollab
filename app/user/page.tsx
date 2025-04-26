@@ -109,7 +109,7 @@ export default function Page() {
         uploadData.append('file', fileToUpload);
         
         // Assuming your API has an endpoint for file uploads
-        const uploadResponse = await axios.post('http://localhost:8000/api/upload', uploadData, {
+        const uploadResponse = await axios.post('http://codecollabbackend-production-e138.up.railway.app/api/upload', uploadData, {
           headers: {
             'Content-Type': 'multipart/form-data'
           }
