@@ -14,13 +14,13 @@ import { Check, Code, LogOut, Send, RefreshCw, User, Users, Terminal, Save, Mic,
 
 
 
-const socket = io("codecollabbackend-production-e138.up.railway.app", {
+const socket = io("https://codecollabbackend-production-e138.up.railway.app", {
   autoConnect: true,
   reconnection: true,
 });
 
 const api = axios.create({
-  baseURL: "codecollabbackend-production-e138.up.railway.app/api",
+  baseURL: "https://codecollabbackend-production-e138.up.railway.app/api",
 });
 
 interface Message {

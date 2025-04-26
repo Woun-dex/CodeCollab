@@ -12,7 +12,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 
 const api = axios.create({
-  baseURL: "codecollabbackend-production-e138.up.railway.app:8000/api",
+  baseURL: "https://codecollabbackend-production-e138.up.railway.app:8000/api",
   headers: {
     "Content-Type": "application/json",
   },
