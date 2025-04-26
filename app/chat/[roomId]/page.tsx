@@ -36,13 +36,13 @@ if (typeof document !== "undefined") {
   document.head.appendChild(style);
 }
 
-const socket = io("codecollab_backend.railway.internal", {
+const socket = io("codecollab_backend.railway.internal:8000", {
   autoConnect: true,
   reconnection: true,
 });
 
 const api = axios.create({
-  baseURL: "codecollab_backend.railway.internal",
+  baseURL: "codecollab_backend.railway.internal:8000/api",
 });
 
 interface Message {
