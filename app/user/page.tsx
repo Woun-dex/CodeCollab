@@ -257,7 +257,6 @@ export default function Page() {
                     id="email"
                     name="email"
                     type="email"
-                    disabled
                     value={formData.email}
                     onChange={handleInputChange}
                     className="mt-1 bg-black/30 border-neutral-800 focus-visible:ring-primary/20"
