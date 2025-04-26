@@ -21,7 +21,7 @@ interface RoomCardProps {
 }
 
 const api = axios.create({
-  baseURL: "codecollab_backend.railway.internal:8000/api",
+  baseURL: "codecollabbackend-production-e138.up.railway.app/api",
 });
 
 type CardProps = React.ComponentProps<typeof Card>

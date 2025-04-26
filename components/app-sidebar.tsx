@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/sidebar"
 
 const api = axios.create({
-  baseURL: "codecollab_backend.railway.internal:8000/api",
+  baseURL: "codecollabbackend-production-e138.up.railway.app/api",
   headers: {
     "Content-Type": "application/json",
   },
