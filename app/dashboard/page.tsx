@@ -35,7 +35,7 @@ const socket = io("codecollab_backend.railway.internal");
 
 // Create axios instance with base URL
 const api = axios.create({
-  baseURL: "codecollab_backend.railway.internal:8000/api",
+  baseURL: "codecollab_backend.railway.internal/api",
   headers: {
     "Content-Type": "application/json",
   },
