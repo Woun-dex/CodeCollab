@@ -31,11 +31,11 @@ import { auth } from "@clerk/nextjs/server" ;
 
 
 
-const socket = io("http://localhost:8000");
+const socket = io("codecollab_backend.railway.internal");
 
 // Create axios instance with base URL
 const api = axios.create({
-  baseURL: "http://localhost:8000/api",
+  baseURL: "codecollab_backend.railway.internal/api",
   headers: {
     "Content-Type": "application/json",
   },
