@@ -8,6 +8,7 @@ import { Upload, X, Save } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 
 const api = axios.create({
@@ -269,6 +270,7 @@ export default function Page() {
         </Card>
         
         <div className="flex justify-end gap-3">
+        <Link href="/dashboard" >
           <Button 
             type="button" 
             variant="outline" 
@@ -276,6 +278,7 @@ export default function Page() {
           >
             Cancel
           </Button>
+          </Link>
           <Button 
             type="submit" 
             disabled={isLoading}

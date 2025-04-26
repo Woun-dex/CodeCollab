@@ -562,8 +562,8 @@ testConnection().then(() => {
     console.log("🔌 Socket connected:", socket.id);
     
     socket.on("join_room", (data) => {
-      const { roomId, username } = data;
-      console.log("User joining room:", { roomId, username, socketId: socket.id });
+      const { roomId, username, userId } = data;
+      console.log("User joining room:", { roomId, username, userId, socketId: socket.id });
       
       // Join the socket.io room
       socket.join(roomId);
@@ -573,10 +573,11 @@ testConnection().then(() => {
         roomUsers.set(roomId, new Map());
       }
       
-      // Add user to the room
+      // Add user to the room with user ID
       roomUsers.get(roomId).set(socket.id, { 
         id: socket.id,
         username,
+        userId, // Store user ID
         joinedAt: new Date()
       });
       
@@ -589,6 +590,7 @@ testConnection().then(() => {
       // Notify all users in the room about the new user
       io.to(roomId).emit("user_joined", { 
         username, 
+        userId,
         socketId: socket.id,
         userCount
       });
@@ -683,6 +685,42 @@ testConnection().then(() => {
         socket.emit("user_count", { count, roomId });
       }
     });
+
+    socket.on("signal", (data) => {
+      try {
+        const { roomId, signal, fromId, targetId } = data;
+        console.log(`Signal from user ${fromId} in room ${roomId}${targetId ? ` to user ${targetId}` : ''}`);
+        
+        // If a specific target is provided, send only to them
+        if (targetId) {
+          // Find the target socket id from our user tracking
+          if (roomUsers.has(roomId)) {
+            const users = roomUsers.get(roomId);
+            const targetSocketId = [...users.entries()]
+              .find(([_, userData]) => userData.userId === targetId)?.[0];
+              
+            if (targetSocketId) {
+              socket.to(targetSocketId).emit("signal", {
+                fromId,
+                signal,
+                roomId
+              });
+              return;
+            }
+          }
+        }
+        
+        // Otherwise broadcast to everyone else in the room
+        socket.to(roomId).emit("signal", {
+          fromId,
+          signal,
+          roomId
+        });
+      } catch (error) {
+        console.error("Error handling WebRTC signal:", error);
+      }
+    });
+    
     socket.on("leave_room", (data) => {
       const { roomId, username } = data;
       console.log(`User ${username} (${socket.id}) is leaving room ${roomId}`);
@@ -755,8 +793,9 @@ testConnection().then(() => {
     });    
   });
 
-  // Start server
-  server.listen(8000, () => {
-    console.log("Server is running on port 8000");
+  // Start the server
+  const PORT = process.env.PORT || 8000;
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
   });
 });
