@@ -12,37 +12,15 @@ import axios from "axios";
 import MonacoEditor from "@/components/MonacoEditor";
 import { Check, Code, LogOut, Send, RefreshCw, User, Users, Terminal, Save, Mic, MicOff, Video, VideoOff } from "lucide-react";
 
-const cursorStyles = `
-  .remote-cursor-decoration {
-    background-color: #ff000050;
-    width: 2px !important;
-    margin-left: 0;
-    border-left: 2px solid red;
-  }
-  .remote-cursor-margin {
-    width: 5px;
-    background-color: red;
-  }
-  .remote-cursor-user1 { border-left-color: #FF5733; }
-  .remote-cursor-user2 { border-left-color: #33FF57; }
-  .remote-cursor-user3 { border-left-color: #3357FF; }
-  .remote-cursor-user4 { border-left-color: #F033FF; }
-  .remote-cursor-user5 { border-left-color: #FF33A8; }
-`;
 
-if (typeof document !== "undefined") {
-  const style = document.createElement("style");
-  style.innerHTML = cursorStyles;
-  document.head.appendChild(style);
-}
 
-const socket = io("codecollabbackend-production-e138.up.railway.app", {
+const socket = io("codecollabbackend-production-e138.up.railway.app:8000", {
   autoConnect: true,
   reconnection: true,
 });
 
 const api = axios.create({
-  baseURL: "codecollabbackend-production-e138.up.railway.app/api",
+  baseURL: "codecollabbackend-production-e138.up.railway.app:8000/api",
 });
 
 interface Message {
