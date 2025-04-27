@@ -99,18 +99,12 @@ export default function CodeCollabRoom() {
     };
 
     pc.ontrack = (event) => {
-      console.log("Received remote track:", event.track.kind);
-      if (event.streams && event.streams[0]) {
+      if (event.streams[0]) {
         setRemoteStreams(prev => ({
           ...prev,
           [peerId]: event.streams[0]
         }));
       }
-    };
-
-    // Monitor connection state
-    pc.onconnectionstatechange = () => {
-      console.log(`Connection state with peer ${peerId}:`, pc.connectionState);
     };
 
     // Add local tracks if available
@@ -163,47 +157,88 @@ export default function CodeCollabRoom() {
   };
 
   // Handle WebRTC signaling
+// Handle WebRTC signaling with improved error handling
 useEffect(() => {
   socket.on("signal", async (data) => {
     const { fromId, signal } = data;
-    console.log("Received signal from:", fromId, "Signal type:", signal.sdp ? "SDP" : "ICE");
-
+    
     try {
-      let pc = connections[fromId];
-
-      // Create a new peer connection if it doesn't exist
-      if (!pc) {
-        pc = createPeerConnection(fromId);
-        setConnections((prev) => ({
+      // Create new connection if it doesn't exist
+      if (!connections[fromId]) {
+        const newPc = createPeerConnection(fromId);
+        setConnections(prev => ({
           ...prev,
-          [fromId]: pc,
+          [fromId]: newPc
         }));
-      }
-
-      if (signal.sdp) {
-        const remoteDescription = new RTCSessionDescription(signal.sdp);
-
-        // Ensure SDP consistency by checking the type
-        if (remoteDescription.type === "offer") {
-          await pc.setRemoteDescription(remoteDescription);
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-
-          socket.emit("signal", {
-            roomId,
-            signal: { sdp: pc.localDescription },
-            fromId: user?.id,
-            targetId: fromId,
-          });
-        } else if (remoteDescription.type === "answer") {
-          await pc.setRemoteDescription(remoteDescription);
+        
+        // Use the new connection reference directly instead of accessing from state
+        // which might not be updated yet
+        if (signal.sdp) {
+          await newPc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          
+          if (signal.sdp.type === 'offer') {
+            const answer = await newPc.createAnswer();
+            await newPc.setLocalDescription(answer);
+            
+            socket.emit("signal", {
+              roomId,
+              signal: { sdp: newPc.localDescription },
+              fromId: user?.id,
+              targetId: fromId
+            });
+          }
+        } else if (signal.candidate) {
+          // For ICE candidates, we need to wait until remote description is set
+          // We'll store candidates to apply them later if needed
+          if (newPc.remoteDescription) {
+            await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else {
+            // Queue candidate for later application
+            setTimeout(async () => {
+              try {
+                if (newPc.remoteDescription) {
+                  await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
+              }
+            }, 1000); // Try again after a delay
+          }
         }
-      } else if (signal.candidate) {
-        // Add ICE candidate only if the remote description is set
-        if (pc.remoteDescription) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-        } else {
-          console.warn("Remote description not set. Delaying ICE candidate.");
+      } else {
+        // Use existing connection
+        const pc = connections[fromId];
+        
+        if (signal.sdp) {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          
+          if (signal.sdp.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            socket.emit("signal", {
+              roomId,
+              signal: { sdp: pc.localDescription },
+              fromId: user?.id,
+              targetId: fromId
+            });
+          }
+        } else if (signal.candidate) {
+          // Only add ICE candidate if remote description is set
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else {
+            // Queue candidate for later application
+            setTimeout(async () => {
+              try {
+                if (pc.remoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
+              }
+            }, 1000); // Try again after a delay
+          }
         }
       }
     } catch (error) {
@@ -211,8 +246,48 @@ useEffect(() => {
     }
   });
 
+  // Rest of your event handlers remain the same
+  socket.on("user_joined", (data) => {
+    if (data.userId && data.userId !== user?.id) {
+      setRemotePeers(prev => [...prev.filter(id => id !== data.userId), data.userId]);
+      handleUserJoined(data.userId);
+    }
+  });
+
+  socket.on("user_left", (data) => {
+    if (data.userId) {
+      // Clean up connection
+      if (connections[data.userId]) {
+        connections[data.userId].close();
+        setConnections(prev => {
+          const newConnections = {...prev};
+          delete newConnections[data.userId];
+          return newConnections;
+        });
+      }
+      
+      // Remove stream
+      setRemoteStreams(prev => {
+        const newStreams = {...prev};
+        delete newStreams[data.userId];
+        return newStreams;
+      });
+      
+      // Remove from peers list
+      setRemotePeers(prev => prev.filter(id => id !== data.userId));
+    }
+  });
+
   return () => {
     socket.off("signal");
+    socket.off("user_joined");
+    socket.off("user_left");
+    
+    // Clean up all media and connections on unmount
+    cleanupMedia();
+    
+    // Close all connections
+    Object.values(connections).forEach(conn => conn.close());
   };
 }, [connections, roomId, user?.id]);
 
@@ -230,15 +305,6 @@ useEffect(() => {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
     }
-
-    // Clean up remote streams
-    setRemoteStreams({});
-    
-    // Close and cleanup all peer connections
-    Object.values(connections).forEach(pc => {
-      pc.close();
-    });
-    setConnections({});
   };
 
   // Media handling with improved error handling and cleanup
@@ -343,10 +409,6 @@ useEffect(() => {
     };
 
     setupMedia();
-
-    return () => {
-      cleanupMedia();
-    };
   }, [activeMic, activeVideo, connections]);
 
   // Handle mic and video toggle with debounce to prevent rapid toggling
@@ -579,6 +641,7 @@ useEffect(() => {
               <User className="h-3 w-3 md:h-4 md:w-4" /> Chat
             </h2>
           </div>
+
           <ScrollArea className="flex-1 px-2 md:px-3 py-2">
             <div className="space-y-3 md:space-y-4 pb-2">
               {messages.map((msg) => {
@@ -587,6 +650,7 @@ useEffect(() => {
                   hour: "2-digit",
                   minute: "2-digit",
                 });
+
                 return (
                   <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                     <div
@@ -606,6 +670,7 @@ useEffect(() => {
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
+
           <form onSubmit={handleSubmit} className="p-2 md:p-3 border-t bg-background">
             <div className="flex gap-1 md:gap-2">
               <Input
@@ -634,6 +699,49 @@ useEffect(() => {
                 {activeVideo ? <Video className="h-3 w-3 md:h-4 md:w-4" /> : <VideoOff className="h-3 w-3 md:h-4 md:w-4" />}
               </Button>
             </div>
+
+            {/* Video UI Section */}
+            {(activeVideo || Object.keys(remoteStreams).length > 0) && (
+              <div className="mt-2 md:mt-3 border rounded-lg p-1 md:p-2 bg-black/5">
+                <div className="text-xs font-medium mb-1 md:mb-2 text-muted-foreground">Video Participants</div>
+                <div className="grid grid-cols-2 gap-1 md:gap-2">
+                  {/* Local video */}
+                  {activeVideo && (
+                    <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">You {activeMic ? "(mic on)" : ""}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Remote videos */}
+                  {Object.entries(remoteStreams).map(([peerId, stream]) => (
+                    <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                      <video
+                        autoPlay
+                        playsInline
+                        className="w-full h-full object-cover"
+                        ref={(ref) => {
+                          if (ref) ref.srcObject = stream;
+                        }}
+                      />
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </form>
         </div>
 
@@ -656,6 +764,7 @@ useEffect(() => {
                     Chat
                   </TabsTrigger>
                 </TabsList>
+
                 <div className="flex items-center gap-1 md:gap-2">
                   <select
                     value={selectedLanguage}
@@ -715,7 +824,7 @@ useEffect(() => {
                 </pre>
               </div>
             </TabsContent>
-
+            
             {/* Mobile Chat Tab */}
             <TabsContent value="chat" className="flex-1 p-0 m-0 overflow-hidden md:hidden flex flex-col">
               <ScrollArea className="flex-1 px-2 py-2">
@@ -726,6 +835,7 @@ useEffect(() => {
                       hour: "2-digit",
                       minute: "2-digit",
                     });
+
                     return (
                       <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                         <div
@@ -745,6 +855,7 @@ useEffect(() => {
                   <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
+
               <form onSubmit={handleSubmit} className="p-2 border-t bg-background">
                 <div className="flex gap-1">
                   <Input
@@ -773,51 +884,50 @@ useEffect(() => {
                     {activeVideo ? <Video className="h-3 w-3" /> : <VideoOff className="h-3 w-3" />}
                   </Button>
                 </div>
-              </form>
 
-              {/* Mobile Video UI Section */}
-              {(activeVideo || Object.keys(remoteStreams).length > 0) && (
-                <div className="mt-2 border rounded-lg p-1 bg-black/5">
-                  <div className="text-xs font-medium mb-1 text-muted-foreground">Video</div>
-                  <div className="grid grid-cols-2 gap-1">
-                    {/* Local video */}
-                    {activeVideo && (
-                      <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-                        <video
-                          ref={localVideoRef}
-                          autoPlay
-                          muted
-                          playsInline
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
-                          <User className="h-2 w-2" />
-                          <span className="text-xs">You {activeMic ? "(mic)" : ""}</span>
+                {/* Mobile Video UI Section */}
+                {(activeVideo || Object.keys(remoteStreams).length > 0) && (
+                  <div className="mt-2 border rounded-lg p-1 bg-black/5">
+                    <div className="text-xs font-medium mb-1 text-muted-foreground">Video</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {/* Local video */}
+                      {activeVideo && (
+                        <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                          <video
+                            ref={localVideoRef}
+                            autoPlay
+                            muted
+                            playsInline
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                            <User className="h-2 w-2" />
+                            <span className="text-xs">You {activeMic ? "(mic)" : ""}</span>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    
-                    {/* Remote videos */}
-                    {Object.entries(remoteStreams).map(([peerId, stream]) => (
-                      <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-                        <video
-                          autoPlay
-                          playsInline
-                          className="w-full h-full object-cover"
-                          ref={element => {
-                            if (element && element.srcObject !== stream) {
-                              element.srcObject = stream;
-                            }
-                          }}
-                        />
-                        <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-1">
-                          <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
+                      )}
+                      
+                      {/* Remote videos */}
+                      {Object.entries(remoteStreams).map(([peerId, stream]) => (
+                        <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                          <video
+                            autoPlay
+                            playsInline
+                            className="w-full h-full object-cover"
+                            ref={(ref) => {
+                              if (ref) ref.srcObject = stream;
+                            }}
+                          />
+                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                            <User className="h-2 w-2" />
+                            <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic)" : ""}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </form>
             </TabsContent>
           </Tabs>
         </div>
