@@ -343,6 +343,10 @@ useEffect(() => {
     };
 
     setupMedia();
+
+    return () => {
+      cleanupMedia();
+    };
   }, [activeMic, activeVideo, connections]);
 
   // Handle mic and video toggle with debounce to prevent rapid toggling
@@ -534,23 +538,6 @@ useEffect(() => {
     setNewMessage("");
   };
 
-  const renderRemoteVideos = () => {
-    return Object.entries(remoteStreams).map(([peerId, stream]) => (
-      <video
-        key={peerId}
-        ref={element => {
-          if (element) {
-            element.srcObject = stream;
-            element.play().catch(e => console.error("Error playing remote video:", e));
-          }
-        }}
-        autoPlay
-        playsInline
-        style={{ width: "200px", height: "150px" }}
-      />
-    ));
-  };
-
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
@@ -592,7 +579,6 @@ useEffect(() => {
               <User className="h-3 w-3 md:h-4 md:w-4" /> Chat
             </h2>
           </div>
-
           <ScrollArea className="flex-1 px-2 md:px-3 py-2">
             <div className="space-y-3 md:space-y-4 pb-2">
               {messages.map((msg) => {
@@ -601,7 +587,6 @@ useEffect(() => {
                   hour: "2-digit",
                   minute: "2-digit",
                 });
-
                 return (
                   <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                     <div
@@ -621,7 +606,6 @@ useEffect(() => {
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
-
           <form onSubmit={handleSubmit} className="p-2 md:p-3 border-t bg-background">
             <div className="flex gap-1 md:gap-2">
               <Input
@@ -650,49 +634,6 @@ useEffect(() => {
                 {activeVideo ? <Video className="h-3 w-3 md:h-4 md:w-4" /> : <VideoOff className="h-3 w-3 md:h-4 md:w-4" />}
               </Button>
             </div>
-
-            {/* Video UI Section */}
-            {(activeVideo || Object.keys(remoteStreams).length > 0) && (
-              <div className="mt-2 md:mt-3 border rounded-lg p-1 md:p-2 bg-black/5">
-                <div className="text-xs font-medium mb-1 md:mb-2 text-muted-foreground">Video Participants</div>
-                <div className="grid grid-cols-2 gap-1 md:gap-2">
-                  {/* Local video */}
-                  {activeVideo && (
-                    <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-                      <video
-                        ref={localVideoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
-                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                        <span className="text-xs">You {activeMic ? "(mic on)" : ""}</span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Remote videos */}
-                  {Object.entries(remoteStreams).map(([peerId, stream]) => (
-                    <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-                      <video
-                        autoPlay
-                        playsInline
-                        className="w-full h-full object-cover"
-                        ref={(ref) => {
-                          if (ref) ref.srcObject = stream;
-                        }}
-                      />
-                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
-                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                        <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </form>
         </div>
 
@@ -715,7 +656,6 @@ useEffect(() => {
                     Chat
                   </TabsTrigger>
                 </TabsList>
-
                 <div className="flex items-center gap-1 md:gap-2">
                   <select
                     value={selectedLanguage}
@@ -775,7 +715,7 @@ useEffect(() => {
                 </pre>
               </div>
             </TabsContent>
-            
+
             {/* Mobile Chat Tab */}
             <TabsContent value="chat" className="flex-1 p-0 m-0 overflow-hidden md:hidden flex flex-col">
               <ScrollArea className="flex-1 px-2 py-2">
@@ -786,7 +726,6 @@ useEffect(() => {
                       hour: "2-digit",
                       minute: "2-digit",
                     });
-
                     return (
                       <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                         <div
@@ -806,7 +745,6 @@ useEffect(() => {
                   <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
-
               <form onSubmit={handleSubmit} className="p-2 border-t bg-background">
                 <div className="flex gap-1">
                   <Input
@@ -835,56 +773,53 @@ useEffect(() => {
                     {activeVideo ? <Video className="h-3 w-3" /> : <VideoOff className="h-3 w-3" />}
                   </Button>
                 </div>
-
-                {/* Mobile Video UI Section */}
-                {(activeVideo || Object.keys(remoteStreams).length > 0) && (
-                  <div className="mt-2 border rounded-lg p-1 bg-black/5">
-                    <div className="text-xs font-medium mb-1 text-muted-foreground">Video</div>
-                    <div className="grid grid-cols-2 gap-1">
-                      {/* Local video */}
-                      {activeVideo && (
-                        <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-                          <video
-                            ref={localVideoRef}
-                            autoPlay
-                            muted
-                            playsInline
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
-                            <User className="h-2 w-2" />
-                            <span className="text-xs">You {activeMic ? "(mic)" : ""}</span>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Remote videos */}
-                      {Object.entries(remoteStreams).map(([peerId, stream]) => (
-                        <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-                          <video
-                            autoPlay
-                            playsInline
-                            className="w-full h-full object-cover"
-                            ref={(ref) => {
-                              if (ref) ref.srcObject = stream;
-                            }}
-                          />
-                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
-                            <User className="h-2 w-2" />
-                            <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic)" : ""}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </form>
+
+              {/* Mobile Video UI Section */}
+              {(activeVideo || Object.keys(remoteStreams).length > 0) && (
+                <div className="mt-2 border rounded-lg p-1 bg-black/5">
+                  <div className="text-xs font-medium mb-1 text-muted-foreground">Video</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {/* Local video */}
+                    {activeVideo && (
+                      <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                        <video
+                          ref={localVideoRef}
+                          autoPlay
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                          <User className="h-2 w-2" />
+                          <span className="text-xs">You {activeMic ? "(mic)" : ""}</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Remote videos */}
+                    {Object.entries(remoteStreams).map(([peerId, stream]) => (
+                      <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                        <video
+                          autoPlay
+                          playsInline
+                          className="w-full h-full object-cover"
+                          ref={(ref) => {
+                            if (ref) ref.srcObject = stream;
+                          }}
+                        />
+                        <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                          <User className="h-2 w-2" />
+                          <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic)" : ""}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>
-      </div>
-      <div className="remote-videos-container">
-        {renderRemoteVideos()}
       </div>
     </div>
   );
