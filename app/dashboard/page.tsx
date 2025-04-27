@@ -143,48 +143,49 @@ export default function Page(){
 
   return (
     <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 bg-[#1E1E1E] shrink-0 items-center gap-2 border-b">
-          <div className="flex items-center gap-2 px-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#">
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Collaborative Rooms</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-        </header>
-        <form onSubmit={handleSubmit} className="flex gap-4 p-4">
-          <Input 
-            value={roomName} 
-            onChange={(e) => setRoomName(e.target.value)} 
-            placeholder="Enter room name"
-          />  
-          <Button type="submit">
-            Create Room
-          </Button>
-        </form>
-        <div className="flex flex-wrap gap-8 p-4">
-          {rooms.map((room) => ( 
-            <CardDemo 
-              key={room.id}
-              name={room.name} 
-              numberId={room.id} 
-              handleClick={() => handleJoinRoom(room.id)}
-              deleteClick={()=> handleDelete(room.id)}
-            />
-          ))}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+  <AppSidebar />
+  <SidebarInset>
+    <header className="flex h-12 md:h-16 bg-[#1E1E1E] shrink-0 items-center gap-1 md:gap-2 border-b">
+      <div className="flex items-center gap-1 md:gap-2 px-2 md:px-3">
+        <SidebarTrigger />
+        <Separator orientation="vertical" className="mr-1 md:mr-2 h-3 md:h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink href="#">
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+            <BreadcrumbItem>
+              <BreadcrumbPage className="text-sm md:text-base">Collaborative Rooms</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+    </header>
+    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 md:gap-4 p-3 md:p-4">
+      <Input 
+        value={roomName} 
+        onChange={(e) => setRoomName(e.target.value)} 
+        placeholder="Enter room name"
+        className="text-sm md:text-base"
+      />  
+      <Button type="submit" className="text-sm md:text-base">
+        Create Room
+      </Button>
+    </form>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8 p-3 md:p-4">
+      {rooms.map((room) => ( 
+        <CardDemo 
+          key={room.id}
+          name={room.name} 
+          numberId={room.id} 
+          handleClick={() => handleJoinRoom(room.id)}
+          deleteClick={()=> handleDelete(room.id)}
+        />
+      ))}
+    </div>
+  </SidebarInset>
+</SidebarProvider>
   )
 }

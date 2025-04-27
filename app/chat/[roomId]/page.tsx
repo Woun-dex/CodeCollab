@@ -552,42 +552,47 @@ export default function CodeCollabRoom() {
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b bg-secondary/20">
-        <div className="flex items-center gap-2">
-          <Code className="h-5 w-5 text-primary" />
-          <h1 className="text-xl font-bold">CodeCollab</h1>
-          <Separator orientation="vertical" className="h-6 mx-2" />
-          <div className="text-sm text-muted-foreground">
+      <div className="flex items-center justify-between px-3 md:px-6 py-2 md:py-3 border-b bg-secondary/20">
+        <div className="flex items-center gap-1 md:gap-2">
+          <Code className="h-4 w-4 md:h-5 md:w-5 text-primary" />
+          <h1 className="text-lg md:text-xl font-bold">CodeCollab</h1>
+          <Separator orientation="vertical" className="h-5 md:h-6 mx-1 md:mx-2" />
+          <div className="text-xs md:text-sm text-muted-foreground hidden md:block">
             Room: <span className="font-semibold text-foreground">{roomId}</span>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-green-500" />
-            <span className="text-sm font-medium">{userNumber} Active</span>
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-1 md:gap-2">
+            <Users className="h-3 w-3 md:h-4 md:w-4 text-green-500" />
+            <span className="text-xs md:text-sm font-medium">{userNumber} Active</span>
           </div>
           {isOwner && (
             <div className="p-1 px-2 rounded-lg bg-green-400 text-green-900 text-xs">Owner</div>
           )}
           <Button variant="outline" size="sm" onClick={handleLogout} className="flex items-center gap-1">
-            <LogOut className="h-4 w-4" />
-            <span>Leave Room</span>
+            <LogOut className="h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden md:inline">Leave Room</span>
           </Button>
         </div>
       </div>
 
+      {/* Mobile Room ID */}
+      <div className="md:hidden text-xs px-3 py-1 text-muted-foreground border-b">
+        Room: <span className="font-semibold text-foreground">{roomId}</span>
+      </div>
+
       {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left panel - Chat */}
-        <div className="flex flex-col w-1/3 border-r">
-          <div className="p-3 border-b bg-secondary/10 flex items-center justify-between">
-            <h2 className="text-md font-medium flex items-center gap-2">
-              <User className="h-4 w-4" /> Chat
+        <div className="hidden md:flex flex-col w-full md:w-1/3 border-r">
+          <div className="p-2 md:p-3 border-b bg-secondary/10 flex items-center justify-between">
+            <h2 className="text-sm md:text-md font-medium flex items-center gap-1 md:gap-2">
+              <User className="h-3 w-3 md:h-4 md:w-4" /> Chat
             </h2>
           </div>
 
-          <ScrollArea className="flex-1 px-3 py-2">
-            <div className="space-y-4 pb-2">
+          <ScrollArea className="flex-1 px-2 md:px-3 py-2">
+            <div className="space-y-3 md:space-y-4 pb-2">
               {messages.map((msg) => {
                 const isUser = msg.username === user?.fullName;
                 const time = new Date(msg.createdAt).toLocaleTimeString([], {
@@ -598,15 +603,15 @@ export default function CodeCollabRoom() {
                 return (
                   <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`max-w-[80%] rounded-lg px-3 py-2 relative ${
+                      className={`max-w-[80%] rounded-lg px-2 md:px-3 py-1.5 md:py-2 relative ${
                         isUser
                           ? "bg-primary text-primary-foreground rounded-br-none"
                           : "bg-muted text-foreground rounded-bl-none"
                       }`}
                     >
-                      <div className="text-xs font-medium mb-1">{isUser ? "You" : msg.username}</div>
-                      <div className="text-sm whitespace-pre-wrap break-words">{msg.message}</div>
-                      <div className="text-xs mt-1 opacity-70 text-right">{time}</div>
+                      <div className="text-xs font-medium mb-0.5 md:mb-1">{isUser ? "You" : msg.username}</div>
+                      <div className="text-xs md:text-sm whitespace-pre-wrap break-words">{msg.message}</div>
+                      <div className="text-xs mt-0.5 md:mt-1 opacity-70 text-right">{time}</div>
                     </div>
                   </div>
                 );
@@ -615,8 +620,8 @@ export default function CodeCollabRoom() {
             </div>
           </ScrollArea>
 
-          <form onSubmit={handleSubmit} className="p-3 border-t bg-background">
-            <div className="flex gap-2">
+          <form onSubmit={handleSubmit} className="p-2 md:p-3 border-t bg-background">
+            <div className="flex gap-1 md:gap-2">
               <Input
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
@@ -624,7 +629,7 @@ export default function CodeCollabRoom() {
                 className="flex-1"
               />
               <Button type="submit" size="icon">
-                <Send className="h-4 w-4" />
+                <Send className="h-3 w-3 md:h-4 md:w-4" />
               </Button>
               <Button 
                 onClick={handleMicClick} 
@@ -632,7 +637,7 @@ export default function CodeCollabRoom() {
                 size="icon"
                 disabled={isSettingUpMedia}
               >
-                {activeMic ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                {activeMic ? <Mic className="h-3 w-3 md:h-4 md:w-4" /> : <MicOff className="h-3 w-3 md:h-4 md:w-4" />}
               </Button>
               <Button 
                 onClick={handleVideoClick} 
@@ -640,15 +645,15 @@ export default function CodeCollabRoom() {
                 size="icon"
                 disabled={isSettingUpMedia}
               >
-                {activeVideo ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                {activeVideo ? <Video className="h-3 w-3 md:h-4 md:w-4" /> : <VideoOff className="h-3 w-3 md:h-4 md:w-4" />}
               </Button>
             </div>
 
             {/* Video UI Section */}
             {(activeVideo || Object.keys(remoteStreams).length > 0) && (
-              <div className="mt-3 border rounded-lg p-2 bg-black/5">
-                <div className="text-xs font-medium mb-2 text-muted-foreground">Video Participants</div>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="mt-2 md:mt-3 border rounded-lg p-1 md:p-2 bg-black/5">
+                <div className="text-xs font-medium mb-1 md:mb-2 text-muted-foreground">Video Participants</div>
+                <div className="grid grid-cols-2 gap-1 md:gap-2">
                   {/* Local video */}
                   {activeVideo && (
                     <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
@@ -659,9 +664,9 @@ export default function CodeCollabRoom() {
                         playsInline
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute bottom-2 left-2 text-xs bg-black/60 text-white px-2 py-1 rounded-md flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        <span>You {activeMic ? "(mic on)" : ""}</span>
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">You {activeMic ? "(mic on)" : ""}</span>
                       </div>
                     </div>
                   )}
@@ -677,9 +682,9 @@ export default function CodeCollabRoom() {
                           if (ref) ref.srcObject = stream;
                         }}
                       />
-                      <div className="absolute bottom-2 left-2 text-xs bg-black/60 text-white px-2 py-1 rounded-md flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        <span>Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
                       </div>
                     </div>
                   ))}
@@ -690,26 +695,30 @@ export default function CodeCollabRoom() {
         </div>
 
         {/* Right panel - Editor & Output */}
-        <div className="flex flex-col w-2/3">
+        <div className="flex flex-col w-full md:w-2/3">
           <Tabs defaultValue="editor" className="flex flex-col flex-1">
-            <div className="p-2 border-b bg-secondary/10">
-              <div className="flex justify-between items-center">
+            <div className="p-1 md:p-2 border-b bg-secondary/10">
+              <div className="flex justify-between items-center flex-wrap gap-2">
                 <TabsList>
-                  <TabsTrigger value="editor" className="flex items-center gap-1">
-                    <Code className="h-4 w-4" />
+                  <TabsTrigger value="editor" className="flex items-center gap-1 text-xs md:text-sm">
+                    <Code className="h-3 w-3 md:h-4 md:w-4" />
                     Editor
                   </TabsTrigger>
-                  <TabsTrigger value="output" className="flex items-center gap-1">
-                    <Terminal className="h-4 w-4" />
+                  <TabsTrigger value="output" className="flex items-center gap-1 text-xs md:text-sm">
+                    <Terminal className="h-3 w-3 md:h-4 md:w-4" />
                     Output
+                  </TabsTrigger>
+                  <TabsTrigger value="chat" className="flex items-center gap-1 text-xs md:text-sm md:hidden">
+                    <User className="h-3 w-3 md:h-4 md:w-4" />
+                    Chat
                   </TabsTrigger>
                 </TabsList>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 md:gap-2">
                   <select
                     value={selectedLanguage}
                     onChange={(e) => setSelectedLanguage(e.target.value)}
-                    className="text-xs border rounded px-2 py-1 bg-background"
+                    className="text-xs border rounded px-1 md:px-2 py-0.5 md:py-1 bg-background"
                   >
                     <option value="python">Python</option>
                     <option value="javascript">JavaScript</option>
@@ -719,20 +728,22 @@ export default function CodeCollabRoom() {
                     size="sm"
                     onClick={runCode}
                     disabled={isRunning}
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1 text-xs md:text-sm"
                   >
-                    {isRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    <span>Run Code</span>
+                    {isRunning ? <RefreshCw className="h-3 w-3 md:h-4 md:w-4 animate-spin" /> : <Check className="h-3 w-3 md:h-4 md:w-4" />}
+                    <span className="hidden md:inline">Run Code</span>
+                    <span className="md:hidden">Run</span>
                   </Button>
                   <Button
                     variant="default"
                     size="sm"
                     onClick={saveCode}
                     disabled={isRunning_s || !isOwner}
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1 text-xs md:text-sm"
                   >
-                    {isRunning_s ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    <span>Save Code</span>
+                    {isRunning_s ? <RefreshCw className="h-3 w-3 md:h-4 md:w-4 animate-spin" /> : <Save className="h-3 w-3 md:h-4 md:w-4" />}
+                    <span className="hidden md:inline">Save Code</span>
+                    <span className="md:hidden">Save</span>
                   </Button>
                 </div>
               </div>
@@ -756,11 +767,116 @@ export default function CodeCollabRoom() {
             </TabsContent>
 
             <TabsContent value="output" className="flex-1 p-0 m-0 overflow-hidden">
-              <div className="h-full overflow-auto bg-black p-4">
-                <pre className="text-sm text-green-400 font-mono whitespace-pre-wrap">
+              <div className="h-full overflow-auto bg-black p-2 md:p-4">
+                <pre className="text-xs md:text-sm text-green-400 font-mono whitespace-pre-wrap">
                   {output || "Code output will appear here after running"}
                 </pre>
               </div>
+            </TabsContent>
+            
+            {/* Mobile Chat Tab */}
+            <TabsContent value="chat" className="flex-1 p-0 m-0 overflow-hidden md:hidden flex flex-col">
+              <ScrollArea className="flex-1 px-2 py-2">
+                <div className="space-y-3 pb-2">
+                  {messages.map((msg) => {
+                    const isUser = msg.username === user?.fullName;
+                    const time = new Date(msg.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+
+                    return (
+                      <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                        <div
+                          className={`max-w-[85%] rounded-lg px-2 py-1.5 relative ${
+                            isUser
+                              ? "bg-primary text-primary-foreground rounded-br-none"
+                              : "bg-muted text-foreground rounded-bl-none"
+                          }`}
+                        >
+                          <div className="text-xs font-medium mb-0.5">{isUser ? "You" : msg.username}</div>
+                          <div className="text-xs whitespace-pre-wrap break-words">{msg.message}</div>
+                          <div className="text-xs mt-0.5 opacity-70 text-right">{time}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+
+              <form onSubmit={handleSubmit} className="p-2 border-t bg-background">
+                <div className="flex gap-1">
+                  <Input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 text-sm"
+                  />
+                  <Button type="submit" size="icon">
+                    <Send className="h-3 w-3" />
+                  </Button>
+                  <Button 
+                    onClick={handleMicClick} 
+                    variant={activeMic ? "default" : "outline"} 
+                    size="icon"
+                    disabled={isSettingUpMedia}
+                  >
+                    {activeMic ? <Mic className="h-3 w-3" /> : <MicOff className="h-3 w-3" />}
+                  </Button>
+                  <Button 
+                    onClick={handleVideoClick} 
+                    variant={activeVideo ? "default" : "outline"} 
+                    size="icon"
+                    disabled={isSettingUpMedia}
+                  >
+                    {activeVideo ? <Video className="h-3 w-3" /> : <VideoOff className="h-3 w-3" />}
+                  </Button>
+                </div>
+
+                {/* Mobile Video UI Section */}
+                {(activeVideo || Object.keys(remoteStreams).length > 0) && (
+                  <div className="mt-2 border rounded-lg p-1 bg-black/5">
+                    <div className="text-xs font-medium mb-1 text-muted-foreground">Video</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {/* Local video */}
+                      {activeVideo && (
+                        <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                          <video
+                            ref={localVideoRef}
+                            autoPlay
+                            muted
+                            playsInline
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                            <User className="h-2 w-2" />
+                            <span className="text-xs">You {activeMic ? "(mic)" : ""}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Remote videos */}
+                      {Object.entries(remoteStreams).map(([peerId, stream]) => (
+                        <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                          <video
+                            autoPlay
+                            playsInline
+                            className="w-full h-full object-cover"
+                            ref={(ref) => {
+                              if (ref) ref.srcObject = stream;
+                            }}
+                          />
+                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                            <User className="h-2 w-2" />
+                            <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic)" : ""}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </form>
             </TabsContent>
           </Tabs>
         </div>
