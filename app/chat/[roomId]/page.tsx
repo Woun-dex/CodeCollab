@@ -157,88 +157,46 @@ export default function CodeCollabRoom() {
   };
 
   // Handle WebRTC signaling
-// Handle WebRTC signaling with improved error handling
 useEffect(() => {
   socket.on("signal", async (data) => {
     const { fromId, signal } = data;
-    
+
     try {
-      // Create new connection if it doesn't exist
-      if (!connections[fromId]) {
-        const newPc = createPeerConnection(fromId);
-        setConnections(prev => ({
+      let pc = connections[fromId];
+
+      // Create a new peer connection if it doesn't exist
+      if (!pc) {
+        pc = createPeerConnection(fromId);
+        setConnections((prev) => ({
           ...prev,
-          [fromId]: newPc
+          [fromId]: pc,
         }));
-        
-        // Use the new connection reference directly instead of accessing from state
-        // which might not be updated yet
-        if (signal.sdp) {
-          await newPc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-          
-          if (signal.sdp.type === 'offer') {
-            const answer = await newPc.createAnswer();
-            await newPc.setLocalDescription(answer);
-            
-            socket.emit("signal", {
-              roomId,
-              signal: { sdp: newPc.localDescription },
-              fromId: user?.id,
-              targetId: fromId
-            });
-          }
-        } else if (signal.candidate) {
-          // For ICE candidates, we need to wait until remote description is set
-          // We'll store candidates to apply them later if needed
-          if (newPc.remoteDescription) {
-            await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-          } else {
-            // Queue candidate for later application
-            setTimeout(async () => {
-              try {
-                if (newPc.remoteDescription) {
-                  await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-                }
-              } catch (error) {
-                console.error("Error applying delayed ICE candidate:", error);
-              }
-            }, 1000); // Try again after a delay
-          }
+      }
+
+      if (signal.sdp) {
+        const remoteDescription = new RTCSessionDescription(signal.sdp);
+
+        // Ensure SDP consistency by checking the type
+        if (remoteDescription.type === "offer") {
+          await pc.setRemoteDescription(remoteDescription);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          socket.emit("signal", {
+            roomId,
+            signal: { sdp: pc.localDescription },
+            fromId: user?.id,
+            targetId: fromId,
+          });
+        } else if (remoteDescription.type === "answer") {
+          await pc.setRemoteDescription(remoteDescription);
         }
-      } else {
-        // Use existing connection
-        const pc = connections[fromId];
-        
-        if (signal.sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-          
-          if (signal.sdp.type === 'offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            
-            socket.emit("signal", {
-              roomId,
-              signal: { sdp: pc.localDescription },
-              fromId: user?.id,
-              targetId: fromId
-            });
-          }
-        } else if (signal.candidate) {
-          // Only add ICE candidate if remote description is set
-          if (pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-          } else {
-            // Queue candidate for later application
-            setTimeout(async () => {
-              try {
-                if (pc.remoteDescription) {
-                  await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-                }
-              } catch (error) {
-                console.error("Error applying delayed ICE candidate:", error);
-              }
-            }, 1000); // Try again after a delay
-          }
+      } else if (signal.candidate) {
+        // Add ICE candidate only if the remote description is set
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        } else {
+          console.warn("Remote description not set. Delaying ICE candidate.");
         }
       }
     } catch (error) {
@@ -246,48 +204,8 @@ useEffect(() => {
     }
   });
 
-  // Rest of your event handlers remain the same
-  socket.on("user_joined", (data) => {
-    if (data.userId && data.userId !== user?.id) {
-      setRemotePeers(prev => [...prev.filter(id => id !== data.userId), data.userId]);
-      handleUserJoined(data.userId);
-    }
-  });
-
-  socket.on("user_left", (data) => {
-    if (data.userId) {
-      // Clean up connection
-      if (connections[data.userId]) {
-        connections[data.userId].close();
-        setConnections(prev => {
-          const newConnections = {...prev};
-          delete newConnections[data.userId];
-          return newConnections;
-        });
-      }
-      
-      // Remove stream
-      setRemoteStreams(prev => {
-        const newStreams = {...prev};
-        delete newStreams[data.userId];
-        return newStreams;
-      });
-      
-      // Remove from peers list
-      setRemotePeers(prev => prev.filter(id => id !== data.userId));
-    }
-  });
-
   return () => {
     socket.off("signal");
-    socket.off("user_joined");
-    socket.off("user_left");
-    
-    // Clean up all media and connections on unmount
-    cleanupMedia();
-    
-    // Close all connections
-    Object.values(connections).forEach(conn => conn.close());
   };
 }, [connections, roomId, user?.id]);
 
