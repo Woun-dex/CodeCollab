@@ -35,10 +35,15 @@ const configuration = {
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     {
-      urls: "turn:openrelay.metered.ca:80",
+      urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
       username: "openrelayproject",
       credential: "openrelayproject",
     },
+    {
+      urls: "turn:relay1.express-turn.com:3478",
+      username: "your-username",
+      credential: "your-credential",
+    }, // Add a backup TURN server (requires credentials)
   ],
 };
 
@@ -327,14 +332,8 @@ useEffect(() => {
         
         // Create constraints based on what's needed
         const constraints = {
-          audio: activeMic ? { 
-            echoCancellation: true, 
-            noiseSuppression: true 
-          } : false,
-          video: activeVideo ? { 
-            width: { ideal: 320 }, 
-            height: { ideal: 240 } 
-          } : false,
+          audio: activeMic,
+          video: activeVideo ? { width: 320, height: 240 } : false,
         };
 
         console.log("Requesting media with constraints:", constraints);
