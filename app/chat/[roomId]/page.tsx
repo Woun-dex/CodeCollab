@@ -99,12 +99,18 @@ export default function CodeCollabRoom() {
     };
 
     pc.ontrack = (event) => {
-      if (event.streams[0]) {
+      console.log("Received remote track:", event.track.kind);
+      if (event.streams && event.streams[0]) {
         setRemoteStreams(prev => ({
           ...prev,
           [peerId]: event.streams[0]
         }));
       }
+    };
+
+    // Monitor connection state
+    pc.onconnectionstatechange = () => {
+      console.log(`Connection state with peer ${peerId}:`, pc.connectionState);
     };
 
     // Add local tracks if available
@@ -160,6 +166,7 @@ export default function CodeCollabRoom() {
 useEffect(() => {
   socket.on("signal", async (data) => {
     const { fromId, signal } = data;
+    console.log("Received signal from:", fromId, "Signal type:", signal.sdp ? "SDP" : "ICE");
 
     try {
       let pc = connections[fromId];
@@ -223,6 +230,15 @@ useEffect(() => {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
     }
+
+    // Clean up remote streams
+    setRemoteStreams({});
+    
+    // Close and cleanup all peer connections
+    Object.values(connections).forEach(pc => {
+      pc.close();
+    });
+    setConnections({});
   };
 
   // Media handling with improved error handling and cleanup
@@ -516,6 +532,23 @@ useEffect(() => {
       username: user.fullName,
     });
     setNewMessage("");
+  };
+
+  const renderRemoteVideos = () => {
+    return Object.entries(remoteStreams).map(([peerId, stream]) => (
+      <video
+        key={peerId}
+        ref={element => {
+          if (element) {
+            element.srcObject = stream;
+            element.play().catch(e => console.error("Error playing remote video:", e));
+          }
+        }}
+        autoPlay
+        playsInline
+        style={{ width: "200px", height: "150px" }}
+      />
+    ));
   };
 
   return (
@@ -849,6 +882,9 @@ useEffect(() => {
             </TabsContent>
           </Tabs>
         </div>
+      </div>
+      <div className="remote-videos-container">
+        {renderRemoteVideos()}
       </div>
     </div>
   );
