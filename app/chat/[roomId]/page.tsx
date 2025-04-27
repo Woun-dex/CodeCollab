@@ -32,14 +32,18 @@ interface Message {
 
 const configuration = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
     {
-      urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443'],
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
+      urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
-    // Removed invalid TURN server; add a valid one if needed
+    {
+      urls: "turn:relay1.express-turn.com:3478",
+      username: "your-username",
+      credential: "your-credential",
+    }, // Add a backup TURN server (requires credentials)
   ],
 };
 
@@ -66,7 +70,6 @@ export default function CodeCollabRoom() {
   const [connections, setConnections] = useState<{[key: string]: RTCPeerConnection}>({});
   const [remoteStreams, setRemoteStreams] = useState<{[key: string]: MediaStream}>({});
   const [remotePeers, setRemotePeers] = useState<string[]>([]);
-  const iceCandidateBuffer = useRef(new Map());
   
   // Added to track media setup state
   const [isSettingUpMedia, setIsSettingUpMedia] = useState(false);
@@ -81,47 +84,34 @@ export default function CodeCollabRoom() {
   const mediaLockRef = useRef<boolean>(false);
 
   // Setup new peer connection
-  useEffect(() => {
-    if (!roomId || !user?.id) return;
-    socket.connect();
-    socket.emit('join-room', { roomId, userId: user.id });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [roomId, user?.id]);
-
-  // Create a new peer connection
   const createPeerConnection = (peerId: string) => {
     const pc = new RTCPeerConnection(configuration);
-
+    
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket.emit('signal', {
+        socket.emit("signal", {
           roomId,
           signal: { candidate: event.candidate },
           fromId: user?.id,
-          targetId: peerId,
+          targetId: peerId
         });
       }
     };
 
     pc.ontrack = (event) => {
       if (event.streams[0]) {
-        setRemoteStreams((prev) => ({
+        setRemoteStreams(prev => ({
           ...prev,
-          [peerId]: event.streams[0],
+          [peerId]: event.streams[0]
         }));
       }
     };
 
     // Add local tracks if available
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        if (track.readyState === 'live') {
-          if (localStreamRef.current) {
-            pc.addTrack(track, localStreamRef.current);
-          }
+      localStreamRef.current.getTracks().forEach(track => {
+        if (track.readyState === "live") {
+          pc.addTrack(track, localStreamRef.current!);
         }
       });
     }
@@ -129,211 +119,313 @@ export default function CodeCollabRoom() {
     return pc;
   };
 
-  // Initiate a call to a peer
-  const handleCall = async (peerId: string, pc: RTCPeerConnection) => {
+  // Handle new user joining
+  const handleUserJoined = (userId: string) => {
+    if (userId !== user?.id && !connections[userId]) {
+      const newPc = createPeerConnection(userId);
+      
+      setConnections(prev => ({
+        ...prev,
+        [userId]: newPc
+      }));
+      
+      // If we have media, initiate call
+      if (localStreamRef.current && (activeMic || activeVideo)) {
+        handleCall(userId, newPc);
+      }
+    }
+  };
+
+  // Initiate call to peer
+  const handleCall = async (peerId: string, peerConnection?: RTCPeerConnection) => {
+    const pc = peerConnection || connections[peerId];
+    if (!pc) return;
+    
     try {
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
-      });
+      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('signal', {
+      
+      socket.emit("signal", {
         roomId,
         signal: { sdp: pc.localDescription },
         fromId: user?.id,
-        targetId: peerId,
+        targetId: peerId
       });
     } catch (error) {
-      console.error('Error creating offer:', error);
+      console.error("Error creating offer:", error);
     }
   };
 
-  // Handle media setup
-  const setupMedia = async () => {
-    if (isSettingUpMedia || (!activeMic && !activeVideo)) {
-      cleanupMedia();
-      return;
-    }
-
-    setIsSettingUpMedia(true);
+  // Handle WebRTC signaling
+// Handle WebRTC signaling with improved error handling
+useEffect(() => {
+  socket.on("signal", async (data) => {
+    const { fromId, signal } = data;
+    
     try {
-      cleanupMedia();
-      const constraints = {
-        audio: activeMic,
-        video: activeVideo ? { width: 320, height: 240 } : false,
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
-      if (localVideoRef.current && activeVideo) {
-        localVideoRef.current.srcObject = stream;
-      }
-
-      // Update existing peer connections with new tracks
-      Object.entries(connections).forEach(([peerId, pc]) => {
-        const senders = pc.getSenders();
-        stream.getTracks().forEach((track) => {
-          const sender = senders.find((s) => s.track?.kind === track.kind);
-          if (sender) {
-            sender.replaceTrack(track);
+      // Create new connection if it doesn't exist
+      if (!connections[fromId]) {
+        const newPc = createPeerConnection(fromId);
+        setConnections(prev => ({
+          ...prev,
+          [fromId]: newPc
+        }));
+        
+        // Use the new connection reference directly instead of accessing from state
+        // which might not be updated yet
+        if (signal.sdp) {
+          await newPc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          
+          if (signal.sdp.type === 'offer') {
+            const answer = await newPc.createAnswer();
+            await newPc.setLocalDescription(answer);
+            
+            socket.emit("signal", {
+              roomId,
+              signal: { sdp: newPc.localDescription },
+              fromId: user?.id,
+              targetId: fromId
+            });
+          }
+        } else if (signal.candidate) {
+          // For ICE candidates, we need to wait until remote description is set
+          // We'll store candidates to apply them later if needed
+          if (newPc.remoteDescription) {
+            await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
           } else {
-            pc.addTrack(track, stream);
+            // Queue candidate for later application
+            setTimeout(async () => {
+              try {
+                if (newPc.remoteDescription) {
+                  await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
+              }
+            }, 1000); // Try again after a delay
           }
-        });
-        handleCall(peerId, pc); // Renegotiate SDP
-      });
-    } catch (error) {
-      console.error('Error accessing media devices:', error);
-      if ((error as { name: string }).name === 'NotAllowedError') {
-        setActiveMic(false);
-        setActiveVideo(false);
-      } else if ((error as { name: string }).name === 'NotReadableError') {
-        console.error('Device in use, retrying after delay...');
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        try {
-          const retryStream = await navigator.mediaDevices.getUserMedia({
-            audio: activeMic,
-            video: activeVideo ? { width: 320, height: 240 } : false
-          });
-          localStreamRef.current = retryStream;
-          if (localVideoRef.current && activeVideo) {
-            localVideoRef.current.srcObject = retryStream;
+        }
+      } else {
+        // Use existing connection
+        const pc = connections[fromId];
+        
+        if (signal.sdp) {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          
+          if (signal.sdp.type === 'offer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            
+            socket.emit("signal", {
+              roomId,
+              signal: { sdp: pc.localDescription },
+              fromId: user?.id,
+              targetId: fromId
+            });
           }
-        } catch (retryError) {
-          console.error('Retry failed:', retryError);
-          setActiveMic(false);
-          setActiveVideo(false);
+        } else if (signal.candidate) {
+          // Only add ICE candidate if remote description is set
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else {
+            // Queue candidate for later application
+            setTimeout(async () => {
+              try {
+                if (pc.remoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
+              }
+            }, 1000); // Try again after a delay
+          }
         }
       }
-    } finally {
-      setIsSettingUpMedia(false);
+    } catch (error) {
+      console.error("Error handling WebRTC signal:", error);
     }
-  };
+  });
 
-  // Clean up media
+  // Rest of your event handlers remain the same
+  socket.on("user_joined", (data) => {
+    if (data.userId && data.userId !== user?.id) {
+      setRemotePeers(prev => [...prev.filter(id => id !== data.userId), data.userId]);
+      handleUserJoined(data.userId);
+    }
+  });
+
+  socket.on("user_left", (data) => {
+    if (data.userId) {
+      // Clean up connection
+      if (connections[data.userId]) {
+        connections[data.userId].close();
+        setConnections(prev => {
+          const newConnections = {...prev};
+          delete newConnections[data.userId];
+          return newConnections;
+        });
+      }
+      
+      // Remove stream
+      setRemoteStreams(prev => {
+        const newStreams = {...prev};
+        delete newStreams[data.userId];
+        return newStreams;
+      });
+      
+      // Remove from peers list
+      setRemotePeers(prev => prev.filter(id => id !== data.userId));
+    }
+  });
+
+  return () => {
+    socket.off("signal");
+    socket.off("user_joined");
+    socket.off("user_left");
+    
+    // Clean up all media and connections on unmount
+    cleanupMedia();
+    
+    // Close all connections
+    Object.values(connections).forEach(conn => conn.close());
+  };
+}, [connections, roomId, user?.id]);
+
+  // Clean up media function
   const cleanupMedia = () => {
+    // Stop all tracks in local stream
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
       localStreamRef.current = null;
     }
+    
+    // Clear video element source
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
     }
   };
 
-  // WebRTC signaling and event handlers
+  // Media handling with improved error handling and cleanup
   useEffect(() => {
-    if (!roomId || !user?.id) return;
-
-    socket.on('user_joined', ({ userId }) => {
-      if (userId !== user?.id && !connections[userId]) {
-        const newPc = createPeerConnection(userId);
-        setConnections((prev) => ({
-          ...prev,
-          [userId]: newPc,
-        }));
-        setRemotePeers((prev) => [...new Set([...prev, userId])]);
-        if (localStreamRef.current && (activeMic || activeVideo)) {
-          handleCall(userId, newPc);
-        }
-      }
-    });
-
-    socket.on('user_left', ({ userId }) => {
-      if (connections[userId]) {
-        connections[userId].close();
-        setConnections((prev) => {
-          const newConnections = { ...prev };
-          delete newConnections[userId];
-          return newConnections;
-        });
-        setRemoteStreams((prev) => {
-          const newStreams = { ...prev };
-          delete newStreams[userId];
-          return newStreams;
-        });
-        setRemotePeers((prev) => prev.filter((id) => id !== userId));
-      }
-    });
-
-    socket.on('signal', async ({ fromId, signal, targetId }) => {
-      if (targetId !== user?.id || !fromId) return;
-
-      let pc = connections[fromId];
-      if (!pc) {
-        pc = createPeerConnection(fromId);
-        setConnections((prev) => ({
-          ...prev,
-          [fromId]: pc,
-        }));
-        setRemotePeers((prev) => [...new Set([...prev, fromId])]);
-      }
-
-      try {
-        if (signal.sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-          // Apply buffered ICE candidates
-          if (iceCandidateBuffer.current.has(fromId)) {
-            for (const candidate of iceCandidateBuffer.current.get(fromId)) {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            }
-            iceCandidateBuffer.current.delete(fromId);
-          }
-
-          if (signal.sdp.type === 'offer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('signal', {
-              roomId,
-              signal: { sdp: pc.localDescription },
-              fromId: user?.id,
-              targetId: fromId,
-            });
-          }
-        } else if (signal.candidate) {
-          if (pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-          } else {
-            if (!iceCandidateBuffer.current.has(fromId)) {
-              iceCandidateBuffer.current.set(fromId, []);
-            }
-            iceCandidateBuffer.current.get(fromId).push(signal.candidate);
-          }
-        }
-      } catch (error) {
-        console.error('Error processing signal:', error);
-      }
-    });
-
-    socket.on('room-users', ({ users }) => {
-      setUserNumber(users.length);
-      setIsOwner(users[0] === user?.id); // First user is owner
-    });
-
-    return () => {
-      socket.off('user_joined');
-      socket.off('user_left');
-      socket.off('signal');
-      socket.off('room-users');
-      cleanupMedia();
-      Object.values(connections).forEach((conn) => conn.close());
-      setConnections({});
-    };
-  }, [roomId, user?.id, connections, activeMic, activeVideo]);
-
-  // Handle media toggling
-  useEffect(() => {
-    setupMedia();
-  }, [activeMic, activeVideo]);
-
-  const handleMicClick = () => {
+    // If we're already setting up media, don't start another setup
     if (isSettingUpMedia) return;
-    setActiveMic((prev) => !prev);
+    
+    const setupMedia = async () => {
+      // Prevent concurrent media setup
+      if (mediaLockRef.current) return;
+      mediaLockRef.current = true;
+      
+      try {
+        setIsSettingUpMedia(true);
+        
+        // Always clean up existing media first
+        cleanupMedia();
+        
+        // Only request media if needed
+        if (!activeMic && !activeVideo) {
+          mediaLockRef.current = false;
+          setIsSettingUpMedia(false);
+          return;
+        }
+        
+        // Create constraints based on what's needed
+        const constraints = {
+          audio: activeMic,
+          video: activeVideo ? { width: 320, height: 240 } : false,
+        };
+
+        console.log("Requesting media with constraints:", constraints);
+        
+        // Add a delay before getting user media to ensure previous streams are fully released
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          localStreamRef.current = stream;
+
+          if (localVideoRef.current && activeVideo) {
+            localVideoRef.current.srcObject = stream;
+          }
+          
+          // Update all peer connections with new tracks
+          Object.entries(connections).forEach(([peerId, pc]) => {
+            const senders = pc.getSenders();
+            
+            stream.getTracks().forEach((track) => {
+              const sender = senders.find(s => s.track && s.track.kind === track.kind);
+              
+              if (sender) {
+                // Replace existing track
+                sender.replaceTrack(track);
+              } else {
+                // Add new track if no sender exists for this track type
+                pc.addTrack(track, stream);
+              }
+            });
+            
+            // Reinitiate connection with the updated tracks
+            handleCall(peerId, pc);
+          });
+        } catch (error) {
+          console.error("Error accessing media devices:", error);
+          
+          if (error instanceof DOMException) {
+            console.error(`DOMException: ${error.name} - ${error.message}`);
+            
+            // Handle NotReadableError specifically (device in use)
+            if (error.name === "NotReadableError") {
+              console.error("Camera or microphone is already in use by another application.");
+              // Add additional delay and retry once for NotReadableError
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              try {
+                const retryStream = await navigator.mediaDevices.getUserMedia(constraints);
+                localStreamRef.current = retryStream;
+                
+                if (localVideoRef.current && activeVideo) {
+                  localVideoRef.current.srcObject = retryStream;
+                }
+              } catch (retryError) {
+                console.error("Retry failed:", retryError);
+                // Reset UI state on retry failure
+                if (error.message.includes("video")) setActiveVideo(false);
+                if (error.message.includes("audio")) setActiveMic(false);
+              }
+            } else {
+              // For other errors, reset the UI state based on error type
+              if (error.name === "NotAllowedError") {
+                console.error("User denied permission to use media devices");
+                setActiveMic(false);
+                setActiveVideo(false);
+              }
+            }
+          }
+        }
+      } finally {
+        mediaLockRef.current = false;
+        setIsSettingUpMedia(false);
+      }
+    };
+
+    setupMedia();
+  }, [activeMic, activeVideo, connections]);
+
+  // Handle mic and video toggle with debounce to prevent rapid toggling
+  const handleMicClick = () => {
+    // Prevent toggle if media setup is in progress
+    if (isSettingUpMedia) return;
+    
+    // Toggle mic state
+    setActiveMic(prev => !prev);
   };
 
   const handleVideoClick = () => {
+    // Prevent toggle if media setup is in progress
     if (isSettingUpMedia) return;
-    setActiveVideo((prev) => !prev);
+    
+    // Toggle video state
+    setActiveVideo(prev => !prev);
   };
 
   // Socket events
@@ -613,8 +705,9 @@ export default function CodeCollabRoom() {
               <div className="mt-2 md:mt-3 border rounded-lg p-1 md:p-2 bg-black/5">
                 <div className="text-xs font-medium mb-1 md:mb-2 text-muted-foreground">Video Participants</div>
                 <div className="grid grid-cols-2 gap-1 md:gap-2">
+                  {/* Local video */}
                   {activeVideo && (
-                    <div className="relative rounded overflow-hidden bg-black aspect-video">
+                    <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
                       <video
                         ref={localVideoRef}
                         autoPlay
@@ -622,25 +715,27 @@ export default function CodeCollabRoom() {
                         playsInline
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1 rounded">
-                        You
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">You {activeMic ? "(mic on)" : ""}</span>
                       </div>
                     </div>
                   )}
+                  
+                  {/* Remote videos */}
                   {Object.entries(remoteStreams).map(([peerId, stream]) => (
-                    <div key={peerId} className="relative rounded overflow-hidden bg-black aspect-video">
+                    <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
                       <video
                         autoPlay
                         playsInline
                         className="w-full h-full object-cover"
-                        ref={(element) => {
-                          if (element && element.srcObject !== stream) {
-                            element.srcObject = stream;
-                          }
+                        ref={(ref) => {
+                          if (ref) ref.srcObject = stream;
                         }}
                       />
-                      <div className="absolute bottom-1 left-1 text-xs bg-black/50 text-white px-1 rounded">
-                        Remote
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
                       </div>
                     </div>
                   ))}
