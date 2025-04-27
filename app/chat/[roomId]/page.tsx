@@ -601,358 +601,337 @@ useEffect(() => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 font-sans">
-    {/* Header */}
-    <header className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 bg-white/80 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 shadow-sm backdrop-blur-sm transition-all duration-300">
-      <div className="flex items-center gap-2 sm:gap-3">
-        <Code className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600 dark:text-indigo-400 transition-transform hover:scale-110" />
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">CodeCollab</h1>
-        <Separator orientation="vertical" className="h-6 sm:h-7 mx-2 sm:mx-3 bg-gray-300 dark:bg-gray-600" />
-        <div className="text-sm sm:text-base text-gray-600 dark:text-gray-300 hidden sm:block">
-          Room: <span className="font-semibold text-gray-900 dark:text-gray-100">{roomId}</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-3 sm:gap-4">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <Users className="h-4 w-4 sm:h-5 sm:w-5 text-green-500" />
-          <span className="text-sm sm:text-base font-medium text-gray-700 dark:text-gray-200">{userNumber} Active</span>
-        </div>
-        {isOwner && (
-          <div className="px-2 py-1 rounded-full bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs sm:text-sm font-medium animate-pulse">
-            Owner
+    <div className="flex flex-col h-screen bg-background">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 md:px-6 py-2 md:py-3 border-b bg-secondary/20">
+        <div className="flex items-center gap-1 md:gap-2">
+          <Code className="h-4 w-4 md:h-5 md:w-5 text-primary" />
+          <h1 className="text-lg md:text-xl font-bold">CodeCollab</h1>
+          <Separator orientation="vertical" className="h-5 md:h-6 mx-1 md:mx-2" />
+          <div className="text-xs md:text-sm text-muted-foreground hidden md:block">
+            Room: <span className="font-semibold text-foreground">{roomId}</span>
           </div>
-        )}
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={handleLogout} 
-          className="flex items-center gap-1.5 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        >
-          <LogOut className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600 dark:text-gray-300" />
-          <span className="hidden sm:inline text-sm">Leave Room</span>
-        </Button>
-      </div>
-    </header>
-
-    {/* Mobile Room ID */}
-    <div className="sm:hidden text-sm px-4 py-2 text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50">
-      Room: <span className="font-semibold text-gray-900 dark:text-gray-100">{roomId}</span>
-    </div>
-
-    {/* Main content */}
-    <main className="flex flex-col sm:flex-row flex-1 overflow-hidden">
-      {/* Left panel - Chat */}
-      <aside className="hidden sm:flex flex-col w-full sm:w-96 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
-        <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/50 flex items-center justify-between">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <User className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600 dark:text-indigo-400" /> Chat
-          </h2>
         </div>
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-1 md:gap-2">
+            <Users className="h-3 w-3 md:h-4 md:w-4 text-green-500" />
+            <span className="text-xs md:text-sm font-medium">{userNumber} Active</span>
+          </div>
+          {isOwner && (
+            <div className="p-1 px-2 rounded-lg bg-green-400 text-green-900 text-xs">Owner</div>
+          )}
+          <Button variant="outline" size="sm" onClick={handleLogout} className="flex items-center gap-1">
+            <LogOut className="h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden md:inline">Leave Room</span>
+          </Button>
+        </div>
+      </div>
 
-        <ScrollArea className="flex-1 px-3 sm:px-4 py-3">
-          <div className="space-y-4 pb-3">
-            {messages.map((msg) => {
-              const isUser = msg.username === user?.fullName;
-              const time = new Date(msg.createdAt).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
+      {/* Mobile Room ID */}
+      <div className="md:hidden text-xs px-3 py-1 text-muted-foreground border-b">
+        Room: <span className="font-semibold text-foreground">{roomId}</span>
+      </div>
 
-              return (
-                <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[80%] rounded-xl px-3 py-2 relative shadow-sm transition-all duration-200 hover:scale-[1.02] ${
-                      isUser
-                        ? "bg-indigo-600 text-white rounded-br-none"
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-none"
-                    }`}
-                  >
-                    <div className="text-xs font-medium mb-1">{isUser ? "You" : msg.username}</div>
-                    <div className="text-sm whitespace-pre-wrap break-words">{msg.message}</div>
-                    <div className="text-xs mt-1 opacity-70 text-right">{time}</div>
+      {/* Main content */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        {/* Left panel - Chat */}
+        <div className="hidden md:flex flex-col w-full md:w-1/3 border-r">
+          <div className="p-2 md:p-3 border-b bg-secondary/10 flex items-center justify-between">
+            <h2 className="text-sm md:text-md font-medium flex items-center gap-1 md:gap-2">
+              <User className="h-3 w-3 md:h-4 md:w-4" /> Chat
+            </h2>
+          </div>
+
+          <ScrollArea className="flex-1 px-2 md:px-3 py-2">
+            <div className="space-y-3 md:space-y-4 pb-2">
+              {messages.map((msg) => {
+                const isUser = msg.username === user?.fullName;
+                const time = new Date(msg.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+
+                return (
+                  <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[80%] rounded-lg px-2 md:px-3 py-1.5 md:py-2 relative ${
+                        isUser
+                          ? "bg-primary text-primary-foreground rounded-br-none"
+                          : "bg-muted text-foreground rounded-bl-none"
+                      }`}
+                    >
+                      <div className="text-xs font-medium mb-0.5 md:mb-1">{isUser ? "You" : msg.username}</div>
+                      <div className="text-xs md:text-sm whitespace-pre-wrap break-words">{msg.message}</div>
+                      <div className="text-xs mt-0.5 md:mt-1 opacity-70 text-right">{time}</div>
+                    </div>
                   </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+
+          <form onSubmit={handleSubmit} className="p-2 md:p-3 border-t bg-background">
+            <div className="flex gap-1 md:gap-2">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1"
+              />
+              <Button type="submit" size="icon">
+                <Send className="h-3 w-3 md:h-4 md:w-4" />
+              </Button>
+              <Button 
+                onClick={handleMicClick} 
+                variant={activeMic ? "default" : "outline"} 
+                size="icon"
+                disabled={isSettingUpMedia}
+              >
+                {activeMic ? <Mic className="h-3 w-3 md:h-4 md:w-4" /> : <MicOff className="h-3 w-3 md:h-4 md:w-4" />}
+              </Button>
+              <Button 
+                onClick={handleVideoClick} 
+                variant={activeVideo ? "default" : "outline"} 
+                size="icon"
+                disabled={isSettingUpMedia}
+              >
+                {activeVideo ? <Video className="h-3 w-3 md:h-4 md:w-4" /> : <VideoOff className="h-3 w-3 md:h-4 md:w-4" />}
+              </Button>
+            </div>
+
+            {/* Video UI Section */}
+            {(activeVideo || Object.keys(remoteStreams).length > 0) && (
+              <div className="mt-2 md:mt-3 border rounded-lg p-1 md:p-2 bg-black/5">
+                <div className="text-xs font-medium mb-1 md:mb-2 text-muted-foreground">Video Participants</div>
+                <div className="grid grid-cols-2 gap-1 md:gap-2">
+                  {/* Local video */}
+                  {activeVideo && (
+                    <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">You {activeMic ? "(mic on)" : ""}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Remote videos */}
+                  {Object.entries(remoteStreams).map(([peerId, stream]) => (
+                    <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                      <video
+                        autoPlay
+                        playsInline
+                        className="w-full h-full object-cover"
+                        ref={(ref) => {
+                          if (ref) ref.srcObject = stream;
+                        }}
+                      />
+                      <div className="absolute bottom-1 md:bottom-2 left-1 md:left-2 text-xs bg-black/60 text-white px-1 md:px-2 py-0.5 md:py-1 rounded-md flex items-center gap-0.5 md:gap-1">
+                        <User className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                        <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
+              </div>
+            )}
+          </form>
+        </div>
 
-        <form onSubmit={handleSubmit} className="p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-          <div className="flex gap-2">
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1 text-sm bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 dark:focus:ring-indigo-400"
-            />
-            <Button type="submit" size="icon" className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600">
-              <Send className="h-4 w-4" />
-            </Button>
-            <Button 
-              onClick={handleMicClick} 
-              variant={activeMic ? "default" : "outline"} 
-              size="icon"
-              disabled={isSettingUpMedia}
-              className={activeMic ? "bg-indigo-600 hover:bg-indigo-700" : "border-gray-300 dark:border-gray-600"}
-            >
-              {activeMic ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-            </Button>
-            <Button 
-              onClick={handleVideoClick} 
-              variant={activeVideo ? "default" : "outline"} 
-              size="icon"
-              disabled={isSettingUpMedia}
-              className={activeVideo ? "bg-indigo-600 hover:bg-indigo-700" : "border-gray-300 dark:border-gray-600"}
-            >
-              {activeVideo ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-            </Button>
-          </div>
+        {/* Right panel - Editor & Output */}
+        <div className="flex flex-col w-full md:w-2/3">
+          <Tabs defaultValue="editor" className="flex flex-col flex-1">
+            <div className="p-1 md:p-2 border-b bg-secondary/10">
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <TabsList>
+                  <TabsTrigger value="editor" className="flex items-center gap-1 text-xs md:text-sm">
+                    <Code className="h-3 w-3 md:h-4 md:w-4" />
+                    Editor
+                  </TabsTrigger>
+                  <TabsTrigger value="output" className="flex items-center gap-1 text-xs md:text-sm">
+                    <Terminal className="h-3 w-3 md:h-4 md:w-4" />
+                    Output
+                  </TabsTrigger>
+                  <TabsTrigger value="chat" className="flex items-center gap-1 text-xs md:text-sm md:hidden">
+                    <User className="h-3 w-3 md:h-4 md:w-4" />
+                    Chat
+                  </TabsTrigger>
+                </TabsList>
 
-          {/* Video UI Section */}
-          {(activeVideo || Object.keys(remoteStreams).length > 0) && (
-            <div className="mt-3 border border-gray-200 dark:border-gray-700 rounded-xl p-2 sm:p-3 bg-gray-50 dark:bg-gray-900 shadow-inner">
-              <div className="text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">Video Participants</div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {/* Local video */}
-                {activeVideo && (
-                  <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md hover:shadow-xl transition-shadow">
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute bottom-2 left-2 text-xs bg-black/70 text-white px-2 py-1 rounded-md flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      <span>You {activeMic ? "(mic on)" : ""}</span>
+                <div className="flex items-center gap-1 md:gap-2">
+                  <select
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="text-xs border rounded px-1 md:px-2 py-0.5 md:py-1 bg-background"
+                  >
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                  </select>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={runCode}
+                    disabled={isRunning}
+                    className="flex items-center gap-1 text-xs md:text-sm"
+                  >
+                    {isRunning ? <RefreshCw className="h-3 w-3 md:h-4 md:w-4 animate-spin" /> : <Check className="h-3 w-3 md:h-4 md:w-4" />}
+                    <span className="hidden md:inline">Run Code</span>
+                    <span className="md:hidden">Run</span>
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={saveCode}
+                    disabled={isRunning_s || !isOwner}
+                    className="flex items-center gap-1 text-xs md:text-sm"
+                  >
+                    {isRunning_s ? <RefreshCw className="h-3 w-3 md:h-4 md:w-4 animate-spin" /> : <Save className="h-3 w-3 md:h-4 md:w-4" />}
+                    <span className="hidden md:inline">Save Code</span>
+                    <span className="md:hidden">Save</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <TabsContent value="editor" className="flex-1 p-0 m-0 overflow-hidden">
+              <MonacoEditor
+                height="100%"
+                language={selectedLanguage}
+                value={code}
+                onChange={handleEditorChange}
+                theme="vs-dark"
+                onMount={handleMount}
+                options={{
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 14,
+                  automaticLayout: true,
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="output" className="flex-1 p-0 m-0 overflow-hidden">
+              <div className="h-full overflow-auto bg-black p-2 md:p-4">
+                <pre className="text-xs md:text-sm text-green-400 font-mono whitespace-pre-wrap">
+                  {output || "Code output will appear here after running"}
+                </pre>
+              </div>
+            </TabsContent>
+            
+            {/* Mobile Chat Tab */}
+            <TabsContent value="chat" className="flex-1 p-0 m-0 overflow-hidden md:hidden flex flex-col">
+              <ScrollArea className="flex-1 px-2 py-2">
+                <div className="space-y-3 pb-2">
+                  {messages.map((msg) => {
+                    const isUser = msg.username === user?.fullName;
+                    const time = new Date(msg.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+
+                    return (
+                      <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                        <div
+                          className={`max-w-[85%] rounded-lg px-2 py-1.5 relative ${
+                            isUser
+                              ? "bg-primary text-primary-foreground rounded-br-none"
+                              : "bg-muted text-foreground rounded-bl-none"
+                          }`}
+                        >
+                          <div className="text-xs font-medium mb-0.5">{isUser ? "You" : msg.username}</div>
+                          <div className="text-xs whitespace-pre-wrap break-words">{msg.message}</div>
+                          <div className="text-xs mt-0.5 opacity-70 text-right">{time}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+
+              <form onSubmit={handleSubmit} className="p-2 border-t bg-background">
+                <div className="flex gap-1">
+                  <Input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 text-sm"
+                  />
+                  <Button type="submit" size="icon">
+                    <Send className="h-3 w-3" />
+                  </Button>
+                  <Button 
+                    onClick={handleMicClick} 
+                    variant={activeMic ? "default" : "outline"} 
+                    size="icon"
+                    disabled={isSettingUpMedia}
+                  >
+                    {activeMic ? <Mic className="h-3 w-3" /> : <MicOff className="h-3 w-3" />}
+                  </Button>
+                  <Button 
+                    onClick={handleVideoClick} 
+                    variant={activeVideo ? "default" : "outline"} 
+                    size="icon"
+                    disabled={isSettingUpMedia}
+                  >
+                    {activeVideo ? <Video className="h-3 w-3" /> : <VideoOff className="h-3 w-3" />}
+                  </Button>
+                </div>
+
+                {/* Mobile Video UI Section */}
+                {(activeVideo || Object.keys(remoteStreams).length > 0) && (
+                  <div className="mt-2 border rounded-lg p-1 bg-black/5">
+                    <div className="text-xs font-medium mb-1 text-muted-foreground">Video</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {/* Local video */}
+                      {activeVideo && (
+                        <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                          <video
+                            ref={localVideoRef}
+                            autoPlay
+                            muted
+                            playsInline
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                            <User className="h-2 w-2" />
+                            <span className="text-xs">You {activeMic ? "(mic)" : ""}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Remote videos */}
+                      {Object.entries(remoteStreams).map(([peerId, stream]) => (
+                        <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md">
+                          <video
+                            autoPlay
+                            playsInline
+                            className="w-full h-full object-cover"
+                            ref={(ref) => {
+                              if (ref) ref.srcObject = stream;
+                            }}
+                          />
+                          <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
+                            <User className="h-2 w-2" />
+                            <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic)" : ""}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
-                
-                {/* Remote videos */}
-                {Object.entries(remoteStreams).map(([peerId, stream]) => (
-                  <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md hover:shadow-xl transition-shadow">
-                    <video
-                      autoPlay
-                      playsInline
-                      className="w-full h-full object-cover"
-                      ref={(ref) => {
-                        if (ref) ref.srcObject = stream;
-                      }}
-                    />
-                    <div className="absolute bottom-2 left-2 text-xs bg-black/70 text-white px-2 py-1 rounded-md flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      <span>Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </form>
-      </aside>
-
-      {/* Right panel - Editor & Output */}
-      <section className="flex flex-col w-full">
-        <Tabs defaultValue="editor" className="flex flex-col flex-1">
-          <div className="p-2 sm:p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-700/50 shadow-sm">
-            <div className="flex justify-between items-center flex-wrap gap-2">
-              <TabsList className="bg-gray-100 dark:bg-gray-800 rounded-lg">
-                <TabsTrigger 
-                  value="editor" 
-                  className="flex items-center gap-1.5 text-sm data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md"
-                >
-                  <Code className="h-4 w-4" />
-                  Editor
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="output" 
-                  className="flex items-center gap-1.5 text-sm data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md"
-                >
-                  <Terminal className="h-4 w-4" />
-                  Output
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="chat" 
-                  className="flex items-center gap-1.5 text-sm data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md sm:hidden"
-                >
-                  <User className="h-4 w-4" />
-                  Chat
-                </TabsTrigger>
-              </TabsList>
-
-              <div className="flex items-center gap-2">
-                <select
-                  value={selectedLanguage}
-                  onChange={(e) => setSelectedLanguage(e.target.value)}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-indigo-500 dark:focus:ring-indigo-400"
-                >
-                  <option value="python">Python</option>
-                  <option value="javascript">JavaScript</option>
-                </select>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={runCode}
-                  disabled={isRunning}
-                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  {isRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  <span className="hidden sm:inline">Run Code</span>
-                  <span className="sm:hidden">Run</span>
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={saveCode}
-                  disabled={isRunning_s || !isOwner}
-                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  {isRunning_s ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  <span className="hidden sm:inline">Save Code</span>
-                  <span className="sm:hidden">Save</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <TabsContent value="editor" className="flex-1 p-0 m-0 overflow-hidden">
-            <MonacoEditor
-              height="100%"
-              language={selectedLanguage}
-              value={code}
-              onChange={handleEditorChange}
-              theme="vs-dark"
-              onMount={handleMount}
-              options={{
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 14,
-                automaticLayout: true,
-                padding: { top: 10, bottom: 10 },
-              }}
-            />
-          </TabsContent>
-
-          <TabsContent value="output" className="flex-1 p-0 m-0 overflow-hidden">
-            <div className="h-full overflow-auto bg-gray-900 dark:bg-black p-4">
-              <pre className="text-sm text-green-400 font-mono whitespace-pre-wrap">
-                {output || "Code output will appear here after running"}
-              </pre>
-            </div>
-          </TabsContent>
-          
-          {/* Mobile Chat Tab */}
-          <TabsContent value="chat" className="flex-1 p-0 m-0 overflow-hidden sm:hidden flex flex-col">
-            <ScrollArea className="flex-1 px-3 py-3">
-              <div className="space-y-4 pb-3">
-                {messages.map((msg) => {
-                  const isUser = msg.username === user?.fullName;
-                  const time = new Date(msg.createdAt).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
-
-                  return (
-                    <div key={msg.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className={`max-w-[85%] rounded-xl px-3 py-2 relative shadow-sm transition-all duration-200 hover:scale-[1.02] ${
-                          isUser
-                            ? "bg-indigo-600 text-white rounded-br-none"
-                            : "bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-none"
-                        }`}
-                      >
-                        <div className="text-xs font-medium mb-1">{isUser ? "You" : msg.username}</div>
-                        <div className="text-sm whitespace-pre-wrap break-words">{msg.message}</div>
-                        <div className="text-xs mt-1 opacity-70 text-right">{time}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-
-            <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <div className="flex gap-2">
-                <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 text-sm bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 dark:focus:ring-indigo-400"
-                />
-                <Button type="submit" size="icon" className="bg-indigo-600 hover:bg-indigo-700">
-                  <Send className="h-4 w-4" />
-                </Button>
-                <Button 
-                  onClick={handleMicClick} 
-                  variant={activeMic ? "default" : "outline"} 
-                  size="icon"
-                  disabled={isSettingUpMedia}
-                  className={activeMic ? "bg-indigo-600 hover:bg-indigo-700" : "border-gray-300 dark:border-gray-600"}
-                >
-                  {activeMic ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-                </Button>
-                <Button 
-                  onClick={handleVideoClick} 
-                  variant={activeVideo ? "default" : "outline"} 
-                  size="icon"
-                  disabled={isSettingUpMedia}
-                  className={activeVideo ? "bg-indigo-600 hover:bg-indigo-700" : "border-gray-300 dark:border-gray-600"}
-                >
-                  {activeVideo ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                </Button>
-              </div>
-
-              {/* Mobile Video UI Section */}
-              {(activeVideo || Object.keys(remoteStreams).length > 0) && (
-                <div className="mt-3 border border-gray-200 dark:border-gray-700 rounded-xl p-2 bg-gray-50 dark:bg-gray-900 shadow-inner">
-                  <div className="text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">Video</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Local video */}
-                    {activeVideo && (
-                      <div className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md hover:shadow-xl transition-shadow">
-                        <video
-                          ref={localVideoRef}
-                          autoPlay
-                          muted
-                          playsInline
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute bottom-2 left-2 text-xs bg-black/70 text-white px-2 py-1 rounded-md flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          <span>You {activeMic ? "(mic)" : ""}</span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Remote videos */}
-                    {Object.entries(remoteStreams).map(([peerId, stream]) => (
-                      <div key={peerId} className="relative rounded-lg overflow-hidden bg-black aspect-video shadow-md hover:shadow-xl transition-shadow">
-                        <video
-                          autoPlay
-                          playsInline
-                          className="w-full h-full object-cover"
-                          ref={(ref) => {
-                            if (ref) ref.srcObject = stream;
-                          }}
-                        />
-                        <div className="absolute bottom-2 left-2 text-xs bg-black/70 text-white px-2 py-1 rounded-md flex items-center gap-1">
-                          <User className="h-3 w-3" />
-                          <span>Peer {stream.getAudioTracks().length > 0 ? "(mic)" : ""}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </form>
-          </TabsContent>
-        </Tabs>
-      </section>
-    </main>
-  </div>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </div>
   );
 }
