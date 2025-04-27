@@ -152,20 +152,56 @@ export default function CodeCollabRoom() {
   };
 
   // Handle WebRTC signaling
-  useEffect(() => {
-    socket.on("signal", async (data) => {
-      const { fromId, signal } = data;
-      
-      try {
-        // Create new connection if it doesn't exist
-        if (!connections[fromId]) {
-          const newPc = createPeerConnection(fromId);
-          setConnections(prev => ({
-            ...prev,
-            [fromId]: newPc
-          }));
-        }
+// Handle WebRTC signaling with improved error handling
+useEffect(() => {
+  socket.on("signal", async (data) => {
+    const { fromId, signal } = data;
+    
+    try {
+      // Create new connection if it doesn't exist
+      if (!connections[fromId]) {
+        const newPc = createPeerConnection(fromId);
+        setConnections(prev => ({
+          ...prev,
+          [fromId]: newPc
+        }));
         
+        // Use the new connection reference directly instead of accessing from state
+        // which might not be updated yet
+        if (signal.sdp) {
+          await newPc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          
+          if (signal.sdp.type === 'offer') {
+            const answer = await newPc.createAnswer();
+            await newPc.setLocalDescription(answer);
+            
+            socket.emit("signal", {
+              roomId,
+              signal: { sdp: newPc.localDescription },
+              fromId: user?.id,
+              targetId: fromId
+            });
+          }
+        } else if (signal.candidate) {
+          // For ICE candidates, we need to wait until remote description is set
+          // We'll store candidates to apply them later if needed
+          if (newPc.remoteDescription) {
+            await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else {
+            // Queue candidate for later application
+            setTimeout(async () => {
+              try {
+                if (newPc.remoteDescription) {
+                  await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
+              }
+            }, 1000); // Try again after a delay
+          }
+        }
+      } else {
+        // Use existing connection
         const pc = connections[fromId];
         
         if (signal.sdp) {
@@ -183,56 +219,72 @@ export default function CodeCollabRoom() {
             });
           }
         } else if (signal.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          // Only add ICE candidate if remote description is set
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else {
+            // Queue candidate for later application
+            setTimeout(async () => {
+              try {
+                if (pc.remoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
+              }
+            }, 1000); // Try again after a delay
+          }
         }
-      } catch (error) {
-        console.error("Error handling WebRTC signal:", error);
       }
-    });
+    } catch (error) {
+      console.error("Error handling WebRTC signal:", error);
+    }
+  });
 
-    socket.on("user_joined", (data) => {
-      if (data.userId && data.userId !== user?.id) {
-        setRemotePeers(prev => [...prev.filter(id => id !== data.userId), data.userId]);
-        handleUserJoined(data.userId);
-      }
-    });
+  // Rest of your event handlers remain the same
+  socket.on("user_joined", (data) => {
+    if (data.userId && data.userId !== user?.id) {
+      setRemotePeers(prev => [...prev.filter(id => id !== data.userId), data.userId]);
+      handleUserJoined(data.userId);
+    }
+  });
 
-    socket.on("user_left", (data) => {
-      if (data.userId) {
-        // Clean up connection
-        if (connections[data.userId]) {
-          connections[data.userId].close();
-          setConnections(prev => {
-            const newConnections = {...prev};
-            delete newConnections[data.userId];
-            return newConnections;
-          });
-        }
-        
-        // Remove stream
-        setRemoteStreams(prev => {
-          const newStreams = {...prev};
-          delete newStreams[data.userId];
-          return newStreams;
+  socket.on("user_left", (data) => {
+    if (data.userId) {
+      // Clean up connection
+      if (connections[data.userId]) {
+        connections[data.userId].close();
+        setConnections(prev => {
+          const newConnections = {...prev};
+          delete newConnections[data.userId];
+          return newConnections;
         });
-        
-        // Remove from peers list
-        setRemotePeers(prev => prev.filter(id => id !== data.userId));
       }
-    });
+      
+      // Remove stream
+      setRemoteStreams(prev => {
+        const newStreams = {...prev};
+        delete newStreams[data.userId];
+        return newStreams;
+      });
+      
+      // Remove from peers list
+      setRemotePeers(prev => prev.filter(id => id !== data.userId));
+    }
+  });
 
-    return () => {
-      socket.off("signal");
-      socket.off("user_joined");
-      socket.off("user_left");
-      
-      // Clean up all media and connections on unmount
-      cleanupMedia();
-      
-      // Close all connections
-      Object.values(connections).forEach(conn => conn.close());
-    };
-  }, [connections, roomId, user?.id]);
+  return () => {
+    socket.off("signal");
+    socket.off("user_joined");
+    socket.off("user_left");
+    
+    // Clean up all media and connections on unmount
+    cleanupMedia();
+    
+    // Close all connections
+    Object.values(connections).forEach(conn => conn.close());
+  };
+}, [connections, roomId, user?.id]);
 
   // Clean up media function
   const cleanupMedia = () => {
