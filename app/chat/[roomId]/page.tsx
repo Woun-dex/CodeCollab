@@ -804,13 +804,14 @@ useEffect(() => {
                           autoPlay
                           playsInline
                           className="w-full h-full object-cover"
-                          ref={(ref) => {
-                            if (ref) ref.srcObject = stream;
+                          ref={element => {
+                            if (element && element.srcObject !== stream) {
+                              element.srcObject = stream;
+                            }
                           }}
                         />
-                        <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-0.5">
-                          <User className="h-2 w-2" />
-                          <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic)" : ""}</span>
+                        <div className="absolute bottom-1 left-1 text-xs bg-black/60 text-white px-1 py-0.5 rounded-md flex items-center gap-1">
+                          <span className="text-xs">Peer {stream.getAudioTracks().length > 0 ? "(mic on)" : ""}</span>
                         </div>
                       </div>
                     ))}
