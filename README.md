@@ -70,7 +70,8 @@ Whether you're pairing on complex problems, leading technical interviews, hostin
 
 > *(Show your platform visually!)*
 
-![Collaborative Editing Interface]([LINK_TO_SCREENSHOT_1])
+![Collaborative Editing Interface]
+<img src="/Screenshot 2025-04-28 035225.png" alt="CodeCollab Project Banner" />
 *Real-time collaborative code editing.*
 
 ![Integrated Chat and Version History]([LINK_TO_SCREENSHOT_2])
@@ -87,7 +88,7 @@ Whether you're pairing on complex problems, leading technical interviews, hostin
 - [React.js](https://reactjs.org/) — Declarative UI development.
 - [Next.js](https://nextjs.org/) — Production-ready React framework.
 - [Tailwind CSS](https://tailwindcss.com/) — Rapid UI building.
-- [CodeMirror](https://codemirror.net/) or [Monaco Editor](https://microsoft.github.io/monaco-editor/) — *(Specify your choice.)*
+-  [Monaco Editor](https://microsoft.github.io/monaco-editor/) — *(Specify your choice.)*
 
 **Backend:**
 - [Node.js](https://nodejs.org/) — Scalable server-side runtime.
