@@ -70,8 +70,7 @@ Whether you're pairing on complex problems, leading technical interviews, hostin
 
 > *(Show your platform visually!)*
 
-![Collaborative Editing Interface]
-<img src="/Screenshot 2025-04-28 035225.png" alt="CodeCollab Project Banner" />
+![Collaborative Editing Interface](https://github.com/Woun-dex/CodeCollab/blob/b7176bbbb9199d0568982329640d1f9979a3b2f3/Screenshot%202025-04-28%20035225.png)
 *Real-time collaborative code editing.*
 
 ![Integrated Chat and Version History]([LINK_TO_SCREENSHOT_2])
