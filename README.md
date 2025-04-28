@@ -73,7 +73,7 @@ Whether you're pairing on complex problems, leading technical interviews, hostin
 ![Collaborative Editing Interface](https://github.com/Woun-dex/CodeCollab/blob/b7176bbbb9199d0568982329640d1f9979a3b2f3/Screenshot%202025-04-28%20035225.png)
 *Real-time collaborative code editing.*
 
-![Integrated Chat and Version History]([LINK_TO_SCREENSHOT_2])
+![Integrated Chat and Version History](https://github.com/Woun-dex/CodeCollab/blob/a44dfc1e1a1f8cd4da80f5672fabef8b9c43f7df/image_2025-04-28_041411799.png)
 *Chat side-by-side with your code and access version history.*
 
 ![GIF Demo of Real-Time Collaboration]([LINK_TO_GIF_DEMO])
