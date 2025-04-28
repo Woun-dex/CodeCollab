@@ -1,7 +1,7 @@
 <div align="center">
   <br />
   <a href="[LINK_TO_LIVE_DEMO]" target="_blank">
-    <img src="[LINK_TO_PROJECT_BANNER_IMAGE]" alt="CodeCollab Project Banner" />
+    <img src="/Screenshot 2025-04-28 035225.png" alt="CodeCollab Project Banner" />
   </a>
   <br />
 
