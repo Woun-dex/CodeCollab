@@ -55,23 +55,34 @@ export function CardDemo({ className, numberId,name , handleClick, deleteClick ,
   }
   
   return (
-    <Card className={cn("w-[230px]", className)} {...props}>
-      <CardHeader>
-        <CardTitle>{name} </CardTitle>
-        <CardDescription>Room ID: {numberId}</CardDescription>
-      </CardHeader>
-      <CardFooter>
-        <div className="flex justify-content items-center gap-2">
-        <Button className="w-full" onClick={() => handleClick(numberId)}>
-          <Check /> Enter Room
-        </Button>
-        <span className="cursor-pointer" onClick={() => deleteroom()}>
-        <Trash  className="text-red-700 cursor-pointer" />
-      </span>
+    <Card className={cn("w-full max-w-xs", className)} {...props}>
+  <CardHeader>
+    <CardTitle className="text-lg md:text-xl font-semibold truncate">{name}</CardTitle>
+    <CardDescription className="text-sm text-muted-foreground break-all">
+      Room ID: {numberId}
+    </CardDescription>
+  </CardHeader>
 
-        </div>
-        
-      </CardFooter>
-    </Card>
+  <CardFooter>
+    <div className="flex flex-col sm:flex-row w-full gap-2">
+      <Button
+        className="flex-1 flex items-center justify-center gap-1"
+        onClick={() => handleClick(numberId)}
+      >
+        <Check className="w-4 h-4" />
+        Enter Room
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        className="text-red-600 hover:text-red-800 p-2"
+        onClick={deleteroom}
+      >
+        <Trash className="w-5 h-5" />
+      </Button>
+    </div>
+  </CardFooter>
+</Card>
+
   )
 }
