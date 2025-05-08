@@ -40,9 +40,9 @@ const configuration = {
       credential: "openrelayproject",
     },
     {
-      urls: "turn:relay1.express-turn.com:3478",
-      username: "your-username",
-      credential: "your-credential",
+      urls: "turn:relay1.expressturn.com:3480",
+      username: "174672021752747357",
+      credential: "DQyQiIIXACHLuNljl0XLUq8Xc3E=",
     }, // Add a backup TURN server (requires credentials)
   ],
 };
