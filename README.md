@@ -16,6 +16,9 @@
 [![Discord](https://img.shields.io/discord/YOUR_DISCORD_ID?label=discord&logo=discord&color=blue)](YOUR_DISCORD_INVITE_LINK)
 [![Website](https://img.shields.io/badge/website-codecollab.app-blue)](https://codecollab.app)
 
+
+
+
 ---
 
 CodeCollab is a powerful real-time collaborative coding platform designed to connect developers instantly. Write, edit, and chat with your team or friends seamlessly in a shared coding environment — **think Google Docs, but tailor-made for code**.
@@ -27,6 +30,7 @@ Whether you're pairing on complex problems, leading technical interviews, hostin
 ---
 
 ## 📑 Table of Contents
+
 
 - [✨ Features](#-features)
 - [🚀 Live Demo](#-live-demo)
