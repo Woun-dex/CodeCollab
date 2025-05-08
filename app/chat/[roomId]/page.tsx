@@ -32,18 +32,11 @@ interface Message {
 
 const configuration = {
   iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
     {
       urls: "turn:relay1.expressturn.com:3480",
       username: "174672021752747357",
       credential: "DQyQiIIXACHLuNljl0XLUq8Xc3E=",
-    }, // Add a backup TURN server (requires credentials)
+    }, 
   ],
 };
 
