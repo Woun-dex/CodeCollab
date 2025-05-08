@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { useUser } from "@clerk/clerk-react";
 import axios from "axios";
 import MonacoEditor from "@/components/MonacoEditor";
 import { Check, Code, LogOut, Send, RefreshCw, User, Users, Terminal, Save, Mic, MicOff, Video, VideoOff } from "lucide-react";
+
+
 
 const socket = io("https://codecollabbackend-production-e138.up.railway.app", {
   autoConnect: true,
@@ -45,7 +47,7 @@ export default function CodeCollabRoom() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [code, setCode] = useState(
-    '# Start coding here...\n\n# Example Python code\ndef greet(name):\n    return f"Hello, {name}!"\n\n# Print greeting\nprint(greet("CodeCollab User"))\n'
+    '# Start coding here...\n\n# Example Python code\ndef lgreet(name):\n    return f"Hello, {name}!"\n\n# Print greeting\nprint(greet("CodeCollab User"))\n'
   );
   const [remoteCursors, setRemoteCursors] = useState<
     { userId: string; lineNumber: number; column: number }[]
@@ -71,29 +73,11 @@ export default function CodeCollabRoom() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const decorationIdsRef = useRef<string[]>([]);
   
-  // Track media acquire lock
+  // Add this to track media acquire lock
   const mediaLockRef = useRef<boolean>(false);
-  // Store pending ICE candidates
-  const pendingCandidatesRef = useRef<{[peerId: string]: RTCIceCandidate[]}>({});
-
-  // Define the cleanup media function (only once)
-  const cleanupMedia = useCallback(() => {
-    // Stop all tracks in local stream
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        track.stop();
-      });
-      localStreamRef.current = null;
-    }
-    
-    // Clear refs
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-  }, []);
 
   // Setup new peer connection
-  const createPeerConnection = useCallback((peerId: string) => {
+  const createPeerConnection = (peerId: string) => {
     const pc = new RTCPeerConnection(configuration);
     
     pc.onicecandidate = (event) => {
@@ -102,12 +86,13 @@ export default function CodeCollabRoom() {
           roomId,
           signal: { candidate: event.candidate },
           fromId: user?.id,
+          // targetId: peerId // Removed for broadcast
         });
       }
     };
 
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
+      if (event.streams[0]) {
         setRemoteStreams(prev => ({
           ...prev,
           [peerId]: event.streams[0]
@@ -119,41 +104,17 @@ export default function CodeCollabRoom() {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         if (track.readyState === "live") {
-          try {
-            pc.addTrack(track, localStreamRef.current!);
-          } catch (err) {
-            console.error("Error adding track to peer connection:", err);
-          }
+          pc.addTrack(track, localStreamRef.current!);
         }
       });
     }
 
     return pc;
-  }, [configuration, roomId, user?.id]);
-
-  // Apply any pending ICE candidates for a peer
-  const applyPendingCandidates = useCallback((peerId: string, pc: RTCPeerConnection) => {
-    const candidates = pendingCandidatesRef.current[peerId] || [];
-    if (candidates.length > 0 && pc.remoteDescription) {
-      console.log(`Applying ${candidates.length} pending candidates for peer ${peerId}`);
-      
-      candidates.forEach(async (candidate) => {
-        try {
-          await pc.addIceCandidate(candidate);
-        } catch (err) {
-          console.error("Error applying stored ICE candidate:", err);
-        }
-      });
-      
-      // Clear applied candidates
-      pendingCandidatesRef.current[peerId] = [];
-    }
-  }, []);
+  };
 
   // Handle new user joining
-  const handleUserJoined = useCallback((userId: string) => {
+  const handleUserJoined = (userId: string) => {
     if (userId !== user?.id && !connections[userId]) {
-      console.log(`New user joined: ${userId}`);
       const newPc = createPeerConnection(userId);
       
       setConnections(prev => ({
@@ -161,23 +122,17 @@ export default function CodeCollabRoom() {
         [userId]: newPc
       }));
       
-      // Initialize pending candidates array for this peer
-      pendingCandidatesRef.current[userId] = [];
-      
       // If we have media, initiate call
       if (localStreamRef.current && (activeMic || activeVideo)) {
         handleCall(userId, newPc);
       }
     }
-  }, [user?.id, connections, activeMic, activeVideo, createPeerConnection]);
+  };
 
   // Initiate call to peer
-  const handleCall = useCallback(async (peerId: string, peerConnection?: RTCPeerConnection) => {
+  const handleCall = async (peerId: string, peerConnection?: RTCPeerConnection) => {
     const pc = peerConnection || connections[peerId];
-    if (!pc) {
-      console.error(`No connection found for peer ${peerId}`);
-      return;
-    }
+    if (!pc) return;
     
     try {
       const offer = await pc.createOffer();
@@ -191,50 +146,63 @@ export default function CodeCollabRoom() {
     } catch (error) {
       console.error("Error creating offer:", error);
     }
-  }, [connections, roomId, user?.id]);
+  };
 
-  // Store ICE candidate for later use
-  const storePendingCandidate = useCallback((peerId: string, candidate: RTCIceCandidate) => {
-    if (!pendingCandidatesRef.current[peerId]) {
-      pendingCandidatesRef.current[peerId] = [];
-    }
-    pendingCandidatesRef.current[peerId].push(candidate);
-  }, []);
-
-  // Handle WebRTC signaling with improved error handling
-  useEffect(() => {
-    socket.on("signal", async (data) => {
-      const { fromId, signal } = data;
-      if (!fromId || fromId === user?.id) return;
-      
-      try {
-        // Get or create connection for this peer
-        let pc: RTCPeerConnection;
+  // Handle WebRTC signaling
+// Handle WebRTC signaling with improved error handling
+useEffect(() => {
+  socket.on("signal", async (data) => {
+    const { fromId, signal } = data;
+    
+    try {
+      // Create new connection if it doesn't exist
+      if (!connections[fromId]) {
+        const newPc = createPeerConnection(fromId);
+        setConnections(prev => ({
+          ...prev,
+          [fromId]: newPc
+        }));
         
-        if (!connections[fromId]) {
-          // Create new connection
-          pc = createPeerConnection(fromId);
-          
-          setConnections(prev => ({
-            ...prev,
-            [fromId]: pc
-          }));
-          
-          // Initialize pending candidates
-          pendingCandidatesRef.current[fromId] = pendingCandidatesRef.current[fromId] || [];
-        } else {
-          pc = connections[fromId];
-        }
-        
-        // Handle SDP
+        // Use the new connection reference directly instead of accessing from state
+        // which might not be updated yet
         if (signal.sdp) {
-          const description = new RTCSessionDescription(signal.sdp);
+          await newPc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
           
-          // Set remote description
-          await pc.setRemoteDescription(description);
-          console.log(`Set remote ${description.type} for peer ${fromId}`);
+          if (signal.sdp.type === 'offer') {
+            const answer = await newPc.createAnswer();
+            await newPc.setLocalDescription(answer);
+            
+            socket.emit("signal", {
+              roomId,
+              signal: { sdp: newPc.localDescription },
+              fromId: user?.id,
+            });
+          }
+        } else if (signal.candidate) {
+          // For ICE candidates, we need to wait until remote description is set
+          // We'll store candidates to apply them later if needed
+          if (newPc.remoteDescription) {
+            await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } else {
+            // Queue candidate for later application
+            setTimeout(async () => {
+              try {
+                if (newPc.remoteDescription) {
+                  await newPc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
+              }
+            }, 1000); // Try again after a delay
+          }
+        }
+      } else {
+        // Use existing connection
+        const pc = connections[fromId];
+        
+        if (signal.sdp) {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
           
-          // Create answer if this is an offer
           if (signal.sdp.type === 'offer') {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -245,218 +213,193 @@ export default function CodeCollabRoom() {
               fromId: user?.id,
             });
           }
-          
-          // Apply any pending ICE candidates now that remote description is set
-          applyPendingCandidates(fromId, pc);
-        }
-        // Handle ICE candidate
-        else if (signal.candidate) {
-          const candidate = new RTCIceCandidate(signal.candidate);
-          
-          // Add candidate if remote description is set, otherwise store for later
+        } else if (signal.candidate) {
+          // Only add ICE candidate if remote description is set
           if (pc.remoteDescription) {
-            await pc.addIceCandidate(candidate);
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
           } else {
-            storePendingCandidate(fromId, candidate);
-          }
-        }
-      } catch (error) {
-        console.error(`WebRTC signaling error with peer ${fromId}:`, error);
-      }
-    });
-
-    return () => {
-      socket.off("signal");
-    };
-  }, [connections, roomId, user?.id, createPeerConnection, applyPendingCandidates, storePendingCandidate]);
-
-  // Separate effect for user join/leave events to prevent duplicate handlers
-  useEffect(() => {
-    // User joined handler
-    socket.on("user_joined", (data) => {
-      if (data.userId && data.userId !== user?.id) {
-        setRemotePeers(prev => {
-          if (!prev.includes(data.userId)) {
-            return [...prev, data.userId];
-          }
-          return prev;
-        });
-        handleUserJoined(data.userId);
-      }
-      
-      // Update user count if available
-      if (data.userCount) {
-        setUserNumber(data.userCount);
-      }
-    });
-
-    // User left handler
-    socket.on("user_left", (data) => {
-      if (data.userId) {
-        console.log(`User left: ${data.userId}`);
-        
-        // Clean up connection
-        if (connections[data.userId]) {
-          connections[data.userId].close();
-          setConnections(prev => {
-            const newConnections = {...prev};
-            delete newConnections[data.userId];
-            return newConnections;
-          });
-        }
-        
-        // Remove stream
-        setRemoteStreams(prev => {
-          const newStreams = {...prev};
-          delete newStreams[data.userId];
-          return newStreams;
-        });
-        
-        // Remove from peers list
-        setRemotePeers(prev => prev.filter(id => id !== data.userId));
-        
-        // Clear pending candidates
-        if (pendingCandidatesRef.current[data.userId]) {
-          delete pendingCandidatesRef.current[data.userId];
-        }
-      }
-    });
-
-    return () => {
-      socket.off("user_joined");
-      socket.off("user_left");
-    };
-  }, [connections, handleUserJoined, user?.id]);
-
-  // Handle component unmount cleanup
-  useEffect(() => {
-    return () => {
-      // Clean up all media and connections on unmount
-      cleanupMedia();
-      
-      // Close all connections
-      Object.values(connections).forEach(conn => {
-        try {
-          conn.close();
-        } catch (err) {
-          console.error("Error closing connection:", err);
-        }
-      });
-
-      // Leave the room
-      if (roomId && user?.fullName && user?.id) {
-        socket.emit("leave_room", { roomId, username: user.fullName, userId: user.id });
-      }
-    };
-  }, [connections, cleanupMedia, roomId, user?.fullName, user?.id]);
-
-  // Function to start local media (would be triggered by UI buttons)
-  const startLocalMedia = useCallback(async (useVideo: boolean, useAudio: boolean) => {
-    // Prevent multiple simultaneous setup attempts
-    if (mediaLockRef.current || isSettingUpMedia) return;
-    
-    try {
-      mediaLockRef.current = true;
-      setIsSettingUpMedia(true);
-      
-      // Always clean up existing media first
-      cleanupMedia();
-      
-      // Only request media if needed
-      if (!useAudio && !useVideo) {
-        return;
-      }
-      
-      // Request new media
-      const constraints = {
-        video: useVideo ? { width: 320, height: 240 } : false,
-        audio: useAudio
-      };
-      
-      console.log("Requesting media with constraints:", constraints);
-      
-      // Add a delay before getting user media to ensure previous streams are fully released
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        localStreamRef.current = stream;
-        
-        // Display in local video element
-        if (localVideoRef.current && useVideo) {
-          localVideoRef.current.srcObject = stream;
-        }
-        
-        // Add tracks to all existing connections
-        Object.entries(connections).forEach(([peerId, pc]) => {
-          const senders = pc.getSenders();
-          
-          stream.getTracks().forEach((track) => {
-            const sender = senders.find(s => s.track && s.track.kind === track.kind);
-            
-            if (sender) {
-              // Replace existing track
-              sender.replaceTrack(track);
-            } else {
-              // Add new track if no sender exists for this track type
+            // Queue candidate for later application
+            setTimeout(async () => {
               try {
-                pc.addTrack(track, stream);
-              } catch (err) {
-                console.error(`Error adding track to connection with ${peerId}:`, err);
+                if (pc.remoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                }
+              } catch (error) {
+                console.error("Error applying delayed ICE candidate:", error);
               }
-            }
-          });
-          
-          // Renegotiate connection
-          handleCall(peerId, pc);
-        });
-      } catch (error) {
-        console.error("Error accessing media devices:", error);
-        
-        if (error instanceof DOMException) {
-          console.error(`DOMException: ${error.name} - ${error.message}`);
-          
-          // Handle NotReadableError specifically (device in use)
-          if (error.name === "NotReadableError") {
-            console.error("Camera or microphone is already in use by another application.");
-            // Add additional delay and retry once for NotReadableError
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            try {
-              const retryStream = await navigator.mediaDevices.getUserMedia(constraints);
-              localStreamRef.current = retryStream;
-              
-              if (localVideoRef.current && useVideo) {
-                localVideoRef.current.srcObject = retryStream;
-              }
-            } catch (retryError) {
-              console.error("Retry failed:", retryError);
-              // Reset UI state on retry failure
-              if (error.message.includes("video")) setActiveVideo(false);
-              if (error.message.includes("audio")) setActiveMic(false);
-            }
-          } else {
-            // For other errors, reset the UI state based on error type
-            if (error.name === "NotAllowedError") {
-              console.error("User denied permission to use media devices");
-              setActiveMic(false);
-              setActiveVideo(false);
-            }
+            }, 1000); // Try again after a delay
           }
         }
       }
-    } finally {
-      mediaLockRef.current = false;
-      setIsSettingUpMedia(false);
+    } catch (error) {
+      console.error("Error handling WebRTC signal:", error);
     }
-  }, [connections, isSettingUpMedia, handleCall, cleanupMedia]);
+  });
 
-  // Media setup effect
+  // Rest of your event handlers remain the same
+  socket.on("user_joined", (data) => {
+    if (data.userId && data.userId !== user?.id) {
+      setRemotePeers(prev => [...prev.filter(id => id !== data.userId), data.userId]);
+      handleUserJoined(data.userId);
+    }
+  });
+
+  socket.on("user_left", (data) => {
+    if (data.userId) {
+      // Clean up connection
+      if (connections[data.userId]) {
+        connections[data.userId].close();
+        setConnections(prev => {
+          const newConnections = {...prev};
+          delete newConnections[data.userId];
+          return newConnections;
+        });
+      }
+      
+      // Remove stream
+      setRemoteStreams(prev => {
+        const newStreams = {...prev};
+        delete newStreams[data.userId];
+        return newStreams;
+      });
+      
+      // Remove from peers list
+      setRemotePeers(prev => prev.filter(id => id !== data.userId));
+    }
+  });
+
+  return () => {
+    socket.off("signal");
+    socket.off("user_joined");
+    socket.off("user_left");
+    
+    // Clean up all media and connections on unmount
+    cleanupMedia();
+    
+    // Close all connections
+    Object.values(connections).forEach(conn => conn.close());
+  };
+}, [connections, roomId, user?.id]);
+
+  // Clean up media function
+  const cleanupMedia = () => {
+    // Stop all tracks in local stream
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
+      localStreamRef.current = null;
+    }
+    
+    // Clear video element source
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+  };
+
+  // Media handling with improved error handling and cleanup
   useEffect(() => {
     // If we're already setting up media, don't start another setup
     if (isSettingUpMedia) return;
     
-    startLocalMedia(activeVideo, activeMic);
-  }, [activeMic, activeVideo, startLocalMedia, isSettingUpMedia]);
+    const setupMedia = async () => {
+      // Prevent concurrent media setup
+      if (mediaLockRef.current) return;
+      mediaLockRef.current = true;
+      
+      try {
+        setIsSettingUpMedia(true);
+        
+        // Always clean up existing media first
+        cleanupMedia();
+        
+        // Only request media if needed
+        if (!activeMic && !activeVideo) {
+          mediaLockRef.current = false;
+          setIsSettingUpMedia(false);
+          return;
+        }
+        
+        // Create constraints based on what's needed
+        const constraints = {
+          audio: activeMic,
+          video: activeVideo ? { width: 320, height: 240 } : false,
+        };
+
+        console.log("Requesting media with constraints:", constraints);
+        
+        // Add a delay before getting user media to ensure previous streams are fully released
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          localStreamRef.current = stream;
+
+          if (localVideoRef.current && activeVideo) {
+            localVideoRef.current.srcObject = stream;
+          }
+          
+          // Update all peer connections with new tracks
+          Object.entries(connections).forEach(([peerId, pc]) => {
+            const senders = pc.getSenders();
+            
+            stream.getTracks().forEach((track) => {
+              const sender = senders.find(s => s.track && s.track.kind === track.kind);
+              
+              if (sender) {
+                // Replace existing track
+                sender.replaceTrack(track);
+              } else {
+                // Add new track if no sender exists for this track type
+                pc.addTrack(track, stream);
+              }
+            });
+            
+            // Reinitiate connection with the updated tracks
+            handleCall(peerId, pc);
+          });
+        } catch (error) {
+          console.error("Error accessing media devices:", error);
+          
+          if (error instanceof DOMException) {
+            console.error(`DOMException: ${error.name} - ${error.message}`);
+            
+            // Handle NotReadableError specifically (device in use)
+            if (error.name === "NotReadableError") {
+              console.error("Camera or microphone is already in use by another application.");
+              // Add additional delay and retry once for NotReadableError
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              try {
+                const retryStream = await navigator.mediaDevices.getUserMedia(constraints);
+                localStreamRef.current = retryStream;
+                
+                if (localVideoRef.current && activeVideo) {
+                  localVideoRef.current.srcObject = retryStream;
+                }
+              } catch (retryError) {
+                console.error("Retry failed:", retryError);
+                // Reset UI state on retry failure
+                if (error.message.includes("video")) setActiveVideo(false);
+                if (error.message.includes("audio")) setActiveMic(false);
+              }
+            } else {
+              // For other errors, reset the UI state based on error type
+              if (error.name === "NotAllowedError") {
+                console.error("User denied permission to use media devices");
+                setActiveMic(false);
+                setActiveVideo(false);
+              }
+            }
+          }
+        }
+      } finally {
+        mediaLockRef.current = false;
+        setIsSettingUpMedia(false);
+      }
+    };
+
+    setupMedia();
+  }, [activeMic, activeVideo, connections]);
 
   // Handle mic and video toggle with debounce to prevent rapid toggling
   const handleMicClick = () => {
@@ -475,7 +418,7 @@ export default function CodeCollabRoom() {
     setActiveVideo(prev => !prev);
   };
 
-  // Socket events for room features
+  // Socket events
   useEffect(() => {
     if (!roomId || !user?.fullName || !user?.id) return;
 
@@ -509,14 +452,30 @@ export default function CodeCollabRoom() {
       setUserNumber(data.count);
     });
 
+    socket.on("user_joined", (data: { userCount: number }) => {
+      setUserNumber(data.userCount);
+    });
+
     return () => {
       socket.off("receive_message");
       socket.off("receive_code");
       socket.off("receive_cursor");
       socket.off("user_count");
       socket.off("user_count_update");
+      socket.off("user_joined");
+      
+      // Properly stop all media tracks
+      cleanupMedia();
+      
+      // Close all connections
+      Object.values(connections).forEach(conn => {
+        conn.close();
+      });
+      
+      // Leave the room
+      socket.emit("leave_room", { roomId, username: user.fullName, userId: user.id });
     };
-  }, [roomId, user?.fullName, user?.id]);
+  }, [roomId, user?.fullName, user?.id, code]);
 
   // Load initial data
   useEffect(() => {
@@ -630,6 +589,7 @@ export default function CodeCollabRoom() {
     });
     setNewMessage("");
   };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
