@@ -54,7 +54,7 @@ export default function CodeCollabRoom() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [code, setCode] = useState(
-    '# Start coding here...\n\n# Example Python code\ndef greet(name):\n    return f"Hello, {name}!"\n\n# Print greeting\nprint(greet("CodeCollab User"))\n'
+    '# Start coding here...\n\n# Example Python code\ndef lgreet(name):\n    return f"Hello, {name}!"\n\n# Print greeting\nprint(greet("CodeCollab User"))\n'
   );
   const [remoteCursors, setRemoteCursors] = useState<
     { userId: string; lineNumber: number; column: number }[]
