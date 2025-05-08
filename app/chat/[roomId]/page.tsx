@@ -86,7 +86,7 @@ export default function CodeCollabRoom() {
           roomId,
           signal: { candidate: event.candidate },
           fromId: user?.id,
-          targetId: peerId
+          // targetId: peerId // Removed for broadcast
         });
       }
     };
@@ -142,7 +142,6 @@ export default function CodeCollabRoom() {
         roomId,
         signal: { sdp: pc.localDescription },
         fromId: user?.id,
-        targetId: peerId
       });
     } catch (error) {
       console.error("Error creating offer:", error);
@@ -177,7 +176,6 @@ useEffect(() => {
               roomId,
               signal: { sdp: newPc.localDescription },
               fromId: user?.id,
-              targetId: fromId
             });
           }
         } else if (signal.candidate) {
@@ -213,7 +211,6 @@ useEffect(() => {
               roomId,
               signal: { sdp: pc.localDescription },
               fromId: user?.id,
-              targetId: fromId
             });
           }
         } else if (signal.candidate) {
