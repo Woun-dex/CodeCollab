@@ -143,50 +143,54 @@ export default function Page(){
 
   return (
     <SidebarProvider>
-    <AppSidebar />
-    <SidebarInset>
-      <header className="flex h-12 md:h-16 bg-[#1E1E1E] shrink-0 items-center gap-1 md:gap-2 border-b">
-        <div className="flex items-center gap-1 md:gap-2 px-2 md:px-3">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="mr-1 md:mr-2 h-3 md:h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="#">
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbPage className="text-sm md:text-base">Collaborative Rooms</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="flex h-14 md:h-20 bg-gradient-to-r from-[#1E1E1E] via-[#232946] to-[#1E1E1E] shrink-0 items-center gap-2 md:gap-4 border-b shadow-md">
+          <div className="flex items-center gap-2 md:gap-4 px-3 md:px-6">
+            <SidebarTrigger />
+            <Separator orientation="vertical" className="mr-2 h-4 md:h-6" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink href="#"></BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="text-base md:text-lg font-bold text-primary">Collaborative Rooms</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+        </header>
+        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 md:gap-6 p-4 md:p-6 bg-gradient-to-r from-[#232946]/80 to-[#1E1E1E]/80 rounded-xl shadow-lg mt-4 mx-2">
+          <Input 
+            value={roomName} 
+            onChange={(e) => setRoomName(e.target.value)} 
+            placeholder="Enter room name"
+            className="text-base md:text-lg px-4 py-2 rounded-lg border-2 border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/30 transition"
+          />  
+          <Button type="submit" className="text-base md:text-lg px-6 py-2 rounded-lg bg-gradient-to-r from-primary to-blue-500 shadow-md hover:from-blue-500 hover:to-primary transition font-semibold">
+            Create Room
+          </Button>
+        </form>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-10 p-4 md:p-6">
+          {rooms.map((room) => ( 
+            <div
+              key={room.id}
+              className="rounded-2xl bg-gradient-to-br from-[#232946] to-[#1E1E1E] shadow-xl border border-primary/20 hover:shadow-2xl hover:border-primary/60 transition-all duration-200 group"
+            >
+              <CardDemo 
+                name={room.name} 
+                numberId={room.id} 
+                handleClick={() => handleJoinRoom(room.id)}
+                deleteClick={()=> handleDelete(room.id)}
+                className="p-6"
+              />
+            </div>
+          ))}
         </div>
-      </header>
-      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 md:gap-4 p-3 md:p-4">
-        <Input 
-          value={roomName} 
-          onChange={(e) => setRoomName(e.target.value)} 
-          placeholder="Enter room name"
-          className="text-sm md:text-base"
-        />  
-        <Button type="submit" className="text-sm md:text-base">
-          Create Room
-        </Button>
-      </form>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8 p-3 md:p-4">
-        {rooms.map((room) => ( 
-          <CardDemo 
-            key={room.id}
-            name={room.name} 
-            numberId={room.id} 
-            handleClick={() => handleJoinRoom(room.id)}
-            deleteClick={()=> handleDelete(room.id)}
-          />
-        ))}
-      </div>
-    </SidebarInset>
-  </SidebarProvider>
-    )
-  }
+      </SidebarInset>
+    </SidebarProvider>
+  )
+}
   

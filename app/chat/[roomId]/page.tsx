@@ -363,49 +363,50 @@ export default function CodeCollabRoom() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-screen bg-gray-900 text-white">
-        {/* Header */}
-        <header className="p-3 border-b border-gray-700 flex justify-between items-center">
+    <div className="flex flex-col h-screen bg-gray-900 text-white">
+      {/* Header */}
+      <header className="p-3 border-b border-gray-700 flex flex-wrap gap-3 justify-between items-start sm:items-center">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-3">
             <Code className="h-6 w-6 text-blue-400" />
             <h1 className="text-xl font-semibold">
               Room: <span className="text-blue-400">{roomId}</span>
             </h1>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1" title="Users in room">
-              <Users className="h-5 w-5" />
-              <span>{userNumber}</span>
-            </div>
-            <Button variant="destructive" size="sm" onClick={handleLeaveRoom}>
-              <LogOut className="mr-2 h-4 w-4" /> Leave Room
-            </Button>
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            <span>{userNumber}</span>
           </div>
-        </header>
-
-        {/* Main Content Area */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Pane: Editor and Terminal/Output */}
-          <div className="flex flex-col flex-1 lg:w-2/3 p-1 md:p-2">
-            {/* Editor Controls */}
-            <div className="flex items-center justify-between mb-2 p-2 bg-gray-800 rounded-md">
-              <div className="flex gap-2">
+        </div>
+        <Button variant="destructive" size="sm" onClick={handleLeaveRoom} className="flex items-center mt-2 sm:mt-0">
+          <LogOut className="mr-2 h-4 w-4" /> Leave Room
+        </Button>
+      </header>
+  
+      {/* Main Content */}
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+        {/* Left Pane */}
+        <div className="flex flex-col flex-1 w-full lg:w-2/3 p-2 space-y-2">
+          {/* Editor Controls */}
+          <div className="flex flex-col md:flex-row justify-between gap-2 p-2 bg-gray-800 rounded-md">
+            <div className="flex flex-wrap gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={handleRunCode} disabled={isRunning}>
+                    {isRunning ? (
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Terminal className="mr-2 h-4 w-4" />
+                    )}
+                    Run
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Execute Code</p></TooltipContent>
+              </Tooltip>
+  
+              {isOwner && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={handleRunCode} disabled={isRunning}>
-                      {isRunning ? (
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Terminal className="mr-2 h-4 w-4" />
-                      )}
-                      Run
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Execute Code</p></TooltipContent>
-                </Tooltip>
-                {isOwner && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
                     <Button variant="outline" size="sm" onClick={handleSaveCode} disabled={isRunningSave}>
                       {isRunningSave ? (
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -414,101 +415,106 @@ export default function CodeCollabRoom() {
                       )}
                       Save
                     </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p>Save Code (Owner only)</p></TooltipContent>
-                  </Tooltip>
-                )}
-                 <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button variant="outline" size="sm" onClick={handleRefreshCode}>
-                            <RefreshCw className="mr-2 h-4 w-4" /> Refresh Code
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p>Fetch latest saved code</p></TooltipContent>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Save Code (Owner only)</p></TooltipContent>
                 </Tooltip>
-              </div>
-              <div className="w-40">
-                <Select value={selectedLanguage} onValueChange={handleLanguageChange}>
-                  <SelectTrigger className="bg-gray-700 border-gray-600">
-                    <SelectValue placeholder="Language" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">
-                    <SelectItem value="python">Python</SelectItem>
-                    <SelectItem value="javascript">JavaScript</SelectItem>
-                    <SelectItem value="java">Java</SelectItem>
-                    <SelectItem value="csharp">C#</SelectItem>
-                    <SelectItem value="cpp">C++</SelectItem>
-                    <SelectItem value="ruby">Ruby</SelectItem>
-                    <SelectItem value="go">Go</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              )}
+  
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={handleRefreshCode}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> Refresh Code
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Fetch latest saved code</p></TooltipContent>
+              </Tooltip>
             </div>
-
-            {/* Editor */}
-            <div className="flex-1 rounded-md overflow-hidden mb-1 md:mb-2">
-              <MonacoEditor
-                language={selectedLanguage}
-                value={code}
-                onChange={handleEditorChange}
-                onMount={handleEditorDidMount}
-                theme="vs-dark"
-              />
-            </div>
-
-            {/* Output/Terminal Tabs */}
-            <div className="h-1/3 md:h-1/4 lg:h-1/5 bg-gray-800 rounded-md">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-                <TabsList className="bg-gray-700 rounded-t-md rounded-b-none">
-                  <TabsTrigger value="output">Output</TabsTrigger>
-                  <TabsTrigger value="terminal" disabled>Terminal (Soon)</TabsTrigger>
-                </TabsList>
-                <TabsContent value="output" className="flex-1 overflow-auto p-2 text-sm bg-gray-800 rounded-b-md">
-                  <pre className="whitespace-pre-wrap">{output || "Code output will appear here."}</pre>
-                </TabsContent>
-                <TabsContent value="terminal" className="flex-1 overflow-auto p-2 text-sm bg-gray-800 rounded-b-md">
-                  <p>Interactive terminal coming soon!</p>
-                </TabsContent>
-              </Tabs>
+  
+            <div className="w-full md:w-40">
+              <Select value={selectedLanguage} onValueChange={handleLanguageChange}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 w-full">
+                  <SelectValue placeholder="Language" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-700 text-white border-gray-600">
+                  <SelectItem value="python">Python</SelectItem>
+                  <SelectItem value="javascript">JavaScript</SelectItem>
+                  <SelectItem value="java">Java</SelectItem>
+                  <SelectItem value="csharp">C#</SelectItem>
+                  <SelectItem value="cpp">C++</SelectItem>
+                  <SelectItem value="ruby">Ruby</SelectItem>
+                  <SelectItem value="go">Go</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-
-          {/* Right Pane: Chat and Participants (Videos removed) */}
-          <div className="flex flex-col lg:w-1/3 p-1 md:p-2 border-l border-gray-700">
-            {/* Removed Video Feeds Section */}
-            
-            {/* Chat Area */}
-            <div className="flex flex-col flex-1 bg-gray-800 rounded-md overflow-hidden">
-              <h2 className="p-3 text-lg font-semibold border-b border-gray-700">Chat</h2>
-              <ScrollArea className="flex-1 p-3">
-                {messages.map((msg) => (
-                  <div key={msg.id} className={`mb-3 p-2 rounded-lg max-w-xs break-words ${msg.username === user?.fullName ? 'bg-blue-600 ml-auto' : 'bg-gray-700 mr-auto'}`}>
-                    <p className="text-xs text-gray-400 mb-1">{msg.username} - {new Date(msg.createdAt).toLocaleTimeString()}</p>
-                    <p>{msg.message}</p>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </ScrollArea>
-              <Separator className="bg-gray-700" />
-              <div className="p-3 flex gap-2">
-                <Input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  className="bg-gray-700 border-gray-600 focus:ring-blue-500"
-                />
-                <Button onClick={handleSendMessage} className="bg-blue-600 hover:bg-blue-700">
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
+  
+          {/* Editor */}
+          <div className="flex-1 min-h-[200px] rounded-md overflow-hidden">
+            <MonacoEditor
+              language={selectedLanguage}
+              value={code}
+              onChange={handleEditorChange}
+              onMount={handleEditorDidMount}
+              theme="vs-dark"
+            />
+          </div>
+  
+          {/* Output Tabs */}
+          <div className="h-48 md:h-1/4 lg:h-1/5 bg-gray-800 rounded-md">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+              <TabsList className="bg-gray-700 rounded-t-md rounded-b-none">
+                <TabsTrigger value="output">Output</TabsTrigger>
+                <TabsTrigger value="terminal" disabled>Terminal (Soon)</TabsTrigger>
+              </TabsList>
+              <TabsContent value="output" className="flex-1 overflow-auto p-2 text-sm bg-gray-800 rounded-b-md">
+                <pre className="whitespace-pre-wrap">{output || "Code output will appear here."}</pre>
+              </TabsContent>
+              <TabsContent value="terminal" className="flex-1 overflow-auto p-2 text-sm bg-gray-800 rounded-b-md">
+                <p>Interactive terminal coming soon!</p>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+  
+        {/* Right Pane: Chat */}
+        <div className="flex flex-col w-full lg:w-1/3 p-2 border-t lg:border-t-0 lg:border-l border-gray-700">
+          <div className="flex flex-col flex-1 bg-gray-800 rounded-md overflow-hidden">
+            <h2 className="p-3 text-lg font-semibold border-b border-gray-700">Chat</h2>
+            <ScrollArea className="flex-1 p-3">
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`mb-3 p-2 rounded-lg max-w-xs break-words ${
+                    msg.username === user?.fullName ? 'bg-blue-600 ml-auto' : 'bg-gray-700 mr-auto'
+                  }`}
+                >
+                  <p className="text-xs text-gray-400 mb-1">
+                    {msg.username} - {new Date(msg.createdAt).toLocaleTimeString()}
+                  </p>
+                  <p>{msg.message}</p>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </ScrollArea>
+            <Separator className="bg-gray-700" />
+            <div className="p-3 flex flex-col sm:flex-row gap-2">
+              <Input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type a message..."
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                className="bg-gray-700 border-gray-600 focus:ring-blue-500 w-full"
+              />
+              <Button onClick={handleSendMessage} className="bg-blue-600 hover:bg-blue-700">
+                <Send className="h-4 w-4" />
+              </Button>
             </div>
-            
-            {/* Removed Media Controls (Mic/Video buttons) */}
           </div>
         </div>
       </div>
-    </TooltipProvider>
+    </div>
+  </TooltipProvider>
+  
   );
 }
