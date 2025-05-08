@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { io, Socket } from "socket.io-client"; // Added Socket type
+import { io, Socket } from "socket.io-client";
 import { useUser } from "@clerk/clerk-react";
 import axios from "axios";
 import MonacoEditor from "@/components/MonacoEditor";
@@ -25,6 +25,7 @@ import {
   Video,
   VideoOff,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Message {
   id: number;
@@ -109,7 +110,7 @@ export default function CodeCollabRoom() {
   const [isRunningSave, setIsRunningSave] = useState<boolean>(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>("python");
   const [isOwner, setIsOwner] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<string>("output"); // State for active tab
+  const [activeTab, setActiveTab] = useState<string>("output");
 
   // WebRTC State
   const [activeMic, setActiveMic] = useState<boolean>(false);
@@ -187,8 +188,7 @@ export default function CodeCollabRoom() {
       try {
         console.log(`Creating offer for ${peerId}`);
         const offer = await pc.createOffer();
-        if (pc.connectionState !== 'closed'
-        ) {
+        if (pc.connectionState !== 'closed') {
           console.warn(
             `handleCall: Signaling state changed before setLocalDescription for ${peerId}. Current: ${pc.signalingState}`
           );
@@ -297,14 +297,12 @@ export default function CodeCollabRoom() {
   );
 
   // --- Effects ---
-  // Scroll to bottom of messages
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Effect for acquiring/cleaning up local media stream
   useEffect(() => {
     if (isSettingUpMedia) return;
 
@@ -347,7 +345,6 @@ export default function CodeCollabRoom() {
               const stream = await navigator.mediaDevices.getUserMedia(constraints);
               localStreamRef.current = stream;
 
-              // Set the local video source
               if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
               }
@@ -385,7 +382,6 @@ export default function CodeCollabRoom() {
     setupOrTeardownMedia();
   }, [activeMic, activeVideo, cleanupMedia, isSettingUpMedia]);
 
-  // Effect for updating peer connections when local stream or media active state changes
   useEffect(() => {
     if (!user?.id) return;
 
@@ -396,7 +392,6 @@ export default function CodeCollabRoom() {
       let renegotiationNeeded = false;
       const currentStream = localStreamRef.current;
 
-      // Audio track management
       const audioTrack =
         currentStream && activeMic ? currentStream.getAudioTracks()[0] : null;
       const audioSender = pc.getSenders().find((s) => s.track && s.track.kind === "audio");
@@ -423,7 +418,6 @@ export default function CodeCollabRoom() {
         }
       }
 
-      // Video track management
       const videoTrack =
         currentStream && activeVideo ? currentStream.getVideoTracks()[0] : null;
       const videoSender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
@@ -461,7 +455,6 @@ export default function CodeCollabRoom() {
     });
   }, [connections, handleCall, user?.id, activeMic, activeVideo]);
 
-  // WebRTC Signaling and Peer Management via Sockets
   useEffect(() => {
     if (!roomId || !user?.id) return;
 
@@ -619,7 +612,6 @@ export default function CodeCollabRoom() {
     };
   }, [roomId, user?.id, connections, createPeerConnection, handleUserJoined]);
 
-  // General Socket Event Listeners
   useEffect(() => {
     if (!roomId || !user?.fullName || !user?.id) return;
 
@@ -673,9 +665,8 @@ export default function CodeCollabRoom() {
         });
       }
     };
-  }, [roomId, user?.id, user?.fullName, cleanupMedia, connections]); // Added connections to dependencies
+  }, [roomId, user?.id, user?.fullName, cleanupMedia, connections]);
 
-  // Load initial data
   useEffect(() => {
     const loadData = async () => {
       if (!roomId || !user?.id) return;
@@ -726,24 +717,9 @@ export default function CodeCollabRoom() {
         });
       }
     });
-    // Optional: Add listener for content change if needed for cursor updates during typing
-    // editor.onDidChangeModelContent((e: any) => {
-    //   if (user?.fullName) {
-    //     const position = editor.getPosition();
-    //     if (position) {
-    //       socket.emit("send_cursor", {
-    //         roomId,
-    //         lineNumber: position.lineNumber,
-    //         column: position.column,
-    //         username: user.fullName,
-    //       });
-    //     }
-    //   }
-    // });
   };
 
   const handleLogout = (): void => {
-    // Perform cleanup before navigating
     cleanupMedia(true);
     Object.values(connections).forEach((conn) => {
       if (conn.signalingState !== "closed") conn.close();
@@ -804,265 +780,292 @@ export default function CodeCollabRoom() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 md:px-6 py-2 md:py-3 border-b bg-secondary/20">
-        <div className="flex items-center gap-1 md:gap-2">
-          <Code className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-          <h1 className="text-lg md:text-xl font-bold">CodeCollab</h1>
-          <Separator orientation="vertical" className="h-5 md:h-6 mx-1 md:mx-2" />
-          <div className="text-xs md:text-sm text-muted-foreground hidden md:block">
-            Room: <span className="font-semibold text-foreground">{roomId}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 md:gap-4">
-          {/* WebRTC Controls */}
-          <Button
-            variant={activeMic ? "secondary" : "outline"}
-            size="icon"
-            onClick={handleMicClick}
-            disabled={isSettingUpMedia}
-            className="h-7 w-7 md:h-8 md:w-8"
-          >
-            {activeMic ? (
-              <Mic className="h-4 w-4 text-green-500" />
-            ) : (
-              <MicOff className="h-4 w-4 text-red-500" />
-            )}
-          </Button>
-          <Button
-            variant={activeVideo ? "secondary" : "outline"}
-            size="icon"
-            onClick={handleVideoClick}
-            disabled={isSettingUpMedia}
-            className="h-7 w-7 md:h-8 md:w-8"
-          >
-            {activeVideo ? (
-              <Video className="h-4 w-4 text-green-500" />
-            ) : (
-              <VideoOff className="h-4 w-4 text-red-500" />
-            )}
-          </Button>
-
-          <div className="flex items-center gap-1 md:gap-2">
-            <Users className="h-3 w-3 md:h-4 md:w-4 text-green-500" />
-            <span className="text-xs md:text-sm font-medium">{userNumber} Active</span>
-          </div>
-          {isOwner && (
-            <div className="p-1 px-2 rounded-lg bg-green-400 text-green-900 text-xs">
-              Owner
+    <TooltipProvider>
+      <div className="flex flex-col h-screen bg-background text-foreground font-sans">
+        {/* Header */}
+        <header className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary/10 to-secondary/10">
+          <div className="flex items-center gap-3">
+            <Code className="h-6 w-6 text-primary" />
+            <h1 className="text-xl font-bold tracking-tight">CodeCollab</h1>
+            <Separator orientation="vertical" className="h-6 mx-2" />
+            <div className="text-sm text-muted-foreground">
+              Room: <span className="font-semibold text-foreground">{roomId}</span>
             </div>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleLogout}
-            className="flex items-center gap-1"
-          >
-            <LogOut className="h-3 w-3 md:h-4 md:w-4" />
-            <span className="hidden md:inline">Leave Room</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Mobile Room ID */}
-      <div className="md:hidden text-xs px-3 py-1 text-muted-foreground border-b">
-        Room: <span className="font-semibold text-foreground">{roomId}</span>
-      </div>
-
-      {/* Main content */}
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-        {/* Left panel - Chat */}
-        <div className="hidden md:flex flex-col w-full md:w-1/3 border-r">
-          <div className="flex items-center px-4 py-3 border-b">
-            <User className="h-4 w-4 mr-2" />
-            <h2 className="text-lg font-semibold">Chat</h2>
           </div>
-          <ScrollArea className="flex-1 p-4">
-            <div className="space-y-4">
-              {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`flex flex-col ${
-                    msg.username === user?.fullName ? "items-end" : "items-start"
-                  }`}
+          <div className="flex items-center gap-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={activeMic ? "secondary" : "outline"}
+                  size="icon"
+                  onClick={handleMicClick}
+                  disabled={isSettingUpMedia}
+                  className="h-9 w-9 rounded-full"
                 >
-                  <div
-                    className={`text-xs font-semibold ${
-                      msg.username === user?.fullName ? "text-primary" : "text-muted-foreground"
-                    }`}
-                  >
-                    {msg.username === user?.fullName ? "You" : msg.username}
-                  </div>
-                  <div
-                    className={`rounded-lg px-3 py-1 text-sm ${
-                      msg.username === user?.fullName
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary"
-                    }`}
-                  >
-                    {msg.message}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {new Date(msg.createdAt).toLocaleTimeString()}
-                  </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} /> {/* Scroll anchor */}
-            </div>
-          </ScrollArea>
-          <form onSubmit={handleSubmitMessage} className="flex p-4 border-t gap-2">
-            <Input
-              type="text"
-              placeholder="Type your message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              className="flex-1"
-            />
-            <Button type="submit" size="icon">
-              <Send className="h-4 w-4" />
-            </Button>
-          </form>
-        </div>
-
-        {/* Right panel - Editor & Output/Video */}
-        <div className="flex flex-col flex-1">
-          {/* Editor Area */}
-          <div className="flex-1 border-b relative">
-            <MonacoEditor
-              height="100%"
-              language={selectedLanguage}
-              value={code}
-              onChange={handleEditorChange}
-              onMount={handleMount}
-              theme="vs-dark" // Or your preferred theme
-              options={{
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                minimap: { enabled: false },
-                contextmenu: false,
-                hover: { enabled: true },
-                // Additional options as needed
-              }}
-            />
-            {/* Remote Cursors Overlay (Conceptual - Monaco handles this internally with decorations) */}
-            {/* You would typically use Monaco's decoration API to show remote cursors */}
-            {/* This array isn't directly rendered as JSX, but is used to add editor decorations */}
-          </div>
-
-          {/* Output/Video Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-2 md:grid-cols-3 w-full rounded-none border-b">
-              <TabsTrigger value="output">
-                <Terminal className="h-4 w-4 mr-2" /> Output
-              </TabsTrigger>
-              <TabsTrigger value="video">
-                <Video className="h-4 w-4 mr-2" /> Video Calls
-              </TabsTrigger>
-              <TabsTrigger value="actions">
-                <Check className="h-4 w-4 mr-2" /> Actions
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="output" className="p-4 flex-1 overflow-y-auto text-sm text-muted-foreground">
-              <pre className="whitespace-pre-wrap break-all">{output}</pre>
-            </TabsContent>
-            <TabsContent value="video" className="p-4 flex flex-wrap gap-4 justify-center items-center">
-              {/* Local Video */}
-              {activeVideo && (
-                <div className="flex flex-col items-center">
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="w-40 h-30 bg-gray-800 rounded-lg shadow-md"
-                  />
-                  <span className="text-xs text-muted-foreground mt-1">You</span>
-                </div>
-              )}
-
-              {/* Remote Videos */}
-              {remotePeers.map((peerId) => {
-                const stream = remoteStreams[peerId];
-                if (!stream) return null; // Don't render if stream is not available
-
-                return (
-                  <div key={peerId} className="flex flex-col items-center">
-                    <video
-                      key={peerId}
-                      ref={(videoElement) => {
-                        if (videoElement && stream) {
-                          videoElement.srcObject = stream;
-                          videoElement.play().catch(e => console.error("Video play failed:", e));
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      className="w-40 h-30 bg-gray-800 rounded-lg shadow-md"
-                    />
-                    {/* Display peer identifier or username if available */}
-                    <span className="text-xs text-muted-foreground mt-1">{peerId}</span>
-                  </div>
-                );
-              })}
-              {/* Message when no video feeds */}
-              {!activeVideo && remotePeers.length === 0 && (
-                 <p className="text-center text-muted-foreground">Enable your camera or microphone and wait for others to join or enable theirs to start a video call.</p>
-              )}
-            </TabsContent>
-            <TabsContent value="actions" className="p-4 flex flex-wrap gap-4 justify-center items-center">
-              {/* Language Selector (Basic example) */}
-              <div className="flex items-center gap-2">
-                <label htmlFor="language-select" className="text-sm text-muted-foreground">Language:</label>
-                <select
-                  id="language-select"
-                  value={selectedLanguage}
-                  onChange={(e) => setSelectedLanguage(e.target.value)}
-                  className="p-2 border rounded-md bg-background text-foreground text-sm"
-                >
-                  <option value="python">Python</option>
-                  <option value="javascript">JavaScript</option>
-                  <option value="typescript">TypeScript</option>
-                  <option value="java">Java</option>
-                  <option value="csharp">C#</option>
-                  <option value="cpp">C++</option>
-                  <option value="go">Go</option>
-                  <option value="rust">Rust</option>
-                  <option value="php">PHP</option>
-                </select>
-              </div>
-
-              {/* Run Button */}
-              <Button onClick={runCode} disabled={isRunning}>
-                {isRunning ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Running...
-                  </>
-                ) : (
-                  <>
-                    <Terminal className="mr-2 h-4 w-4" /> Run Code
-                  </>
-                )}
-              </Button>
-
-              {/* Save Button (Owner Only) */}
-              {isOwner && (
-                <Button onClick={saveCode} disabled={isRunningSave}>
-                  {isRunningSave ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                    </>
+                  {activeMic ? (
+                    <Mic className="h-5 w-5 text-green-500" />
                   ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" /> Save Code
-                    </>
+                    <MicOff className="h-5 w-5 text-red-500" />
                   )}
                 </Button>
-              )}
-            </TabsContent>
-          </Tabs>
-        </div>
+              </TooltipTrigger>
+              <TooltipContent>{activeMic ? "Disable Microphone" : "Enable Microphone"}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={activeVideo ? "secondary" : "outline"}
+                  size="icon"
+                  onClick={handleVideoClick}
+                  disabled={isSettingUpMedia}
+                  className="h-9 w-9 rounded-full"
+                >
+                  {activeVideo ? (
+                    <Video className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <VideoOff className="h-5 w-5 text-red-500" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{activeVideo ? "Disable Camera" : "Enable Camera"}</TooltipContent>
+            </Tooltip>
+            <div className="flex items-center gap-2 bg-secondary/20 px-3 py-1 rounded-full">
+              <Users className="h-4 w-4 text-green-500" />
+              <span className="text-sm font-medium">{userNumber} Active</span>
+            </div>
+            {isOwner && (
+              <div className="px-3 py-1 rounded-full bg-green-500/20 text-green-900 text-sm font-medium">
+                Owner
+              </div>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 hover:bg-destructive/10 hover:border-destructive"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Leave</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Leave Room</TooltipContent>
+            </Tooltip>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex flex-1 overflow-hidden">
+          {/* Chat Panel */}
+          <aside className="hidden lg:flex flex-col w-96 border-r bg-background">
+            <div className="flex items-center px-4 py-3 border-b">
+              <User className="h-5 w-5 mr-2 text-primary" />
+              <h2 className="text-lg font-semibold">Team Chat</h2>
+            </div>
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4">
+                {messages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`flex flex-col ${
+                      msg.username === user?.fullName ? "items-end" : "items-start"
+                    }`}
+                  >
+                    <div
+                      className={`text-xs font-medium ${
+                        msg.username === user?.fullName ? "text-primary" : "text-muted-foreground"
+                      }`}
+                    >
+                      {msg.username === user?.fullName ? "You" : msg.username}
+                    </div>
+                    <div
+                      className={`max-w-[80%] rounded-xl px-4 py-2 text-sm shadow-sm ${
+                        msg.username === user?.fullName
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-foreground"
+                      }`}
+                    >
+                      {msg.message}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+            <form onSubmit={handleSubmitMessage} className="flex p-4 border-t gap-2">
+              <Input
+                type="text"
+                placeholder="Type your message..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                className="flex-1 rounded-full"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="submit" size="icon" className="rounded-full">
+                    <Send className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Send Message</TooltipContent>
+              </Tooltip>
+            </form>
+          </aside>
+
+          {/* Editor & Tabs */}
+          <div className="flex flex-col flex-1">
+            {/* Editor */}
+            <div className="flex-1 border-b">
+              <MonacoEditor
+                height="100%"
+                language={selectedLanguage}
+                value={code}
+                onChange={handleEditorChange}
+                onMount={handleMount}
+                theme="vs-dark"
+                options={{
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  minimap: { enabled: false },
+                  contextmenu: false,
+                  fontSize: 14,
+                  lineNumbers: "on",
+                  glyphMargin: true,
+                }}
+              />
+            </div>
+
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid grid-cols-3 w-full rounded-none border-b bg-secondary/10">
+                <TabsTrigger value="output" className="flex items-center gap-2">
+                  <Terminal className="h-4 w-4" /> Output
+                </TabsTrigger>
+                <TabsTrigger value="video" className="flex items-center gap-2">
+                  <Video className="h-4 w-4" /> Video
+                </TabsTrigger>
+                <TabsTrigger value="actions" className="flex items-center gap-2">
+                  <Check className="h-4 w-4" /> Actions
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="output" className="p-4 max-h-64 overflow-y-auto bg-background/50">
+                <pre className="whitespace-pre-wrap break-all font-mono text-sm text-muted-foreground">
+                  {output}
+                </pre>
+              </TabsContent>
+              <TabsContent value="video" className="p-4 bg-background/50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {activeVideo && (
+                    <div className="flex flex-col items-center">
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full max-w-xs h-48 bg-gray-900 rounded-lg shadow-lg object-cover"
+                      />
+                      <span className="text-sm text-muted-foreground mt-2">You</span>
+                    </div>
+                  )}
+                  {remotePeers.map((peerId) => {
+                    const stream = remoteStreams[peerId];
+                    if (!stream) return null;
+                    return (
+                      <div key={peerId} className="flex flex-col items-center">
+                        <video
+                          ref={(videoElement) => {
+                            if (videoElement && stream) {
+                              videoElement.srcObject = stream;
+                              videoElement.play().catch((e) => console.error("Video play failed:", e));
+                            }
+                          }}
+                          autoPlay
+                          playsInline
+                          className="w-full max-w-xs h-48 bg-gray-900 rounded-lg shadow-lg object-cover"
+                        />
+                        <span className="text-sm text-muted-foreground mt-2">{peerId}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!activeVideo && remotePeers.length === 0 && (
+                  <p className="text-center text-muted-foreground">
+                    Enable your camera or microphone to start a video call.
+                  </p>
+                )}
+              </TabsContent>
+              <TabsContent value="actions" className="p-4 bg-background/50">
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="language-select" className="text-sm font-medium">Language:</label>
+                    <select
+                      id="language-select"
+                      value={selectedLanguage}
+                      onChange={(e) => setSelectedLanguage(e.target.value)}
+                      className="p-2 border rounded-lg bg-background text-foreground text-sm focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="python">Python</option>
+                      <option value="javascript">JavaScript</option>
+                      <option value="typescript">TypeScript</option>
+                      <option value="java">Java</option>
+                      <option value="csharp">C#</option>
+                      <option value="cpp">C++</option>
+                      <option value="go">Go</option>
+                      <option value="rust">Rust</option>
+                      <option value="php">PHP</option>
+                    </select>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={runCode}
+                        disabled={isRunning}
+                        className="flex items-center gap-2"
+                      >
+                        {isRunning ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 animate-spin" /> Running...
+                          </>
+                        ) : (
+                          <>
+                            <Terminal className="h-4 w-4" /> Run Code
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Execute the code</TooltipContent>
+                  </Tooltip>
+                  {isOwner && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={saveCode}
+                          disabled={isRunningSave}
+                          className="flex items-center gap-2"
+                        >
+                          {isRunningSave ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 animate-spin" /> Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4" /> Save Code
+                            </>
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Save code to room</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </main>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
