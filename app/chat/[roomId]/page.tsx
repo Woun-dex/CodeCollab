@@ -482,7 +482,7 @@ export default function CodeCollabRoom() {
               <h2 className="p-3 text-lg font-semibold border-b border-gray-700">Chat</h2>
               <ScrollArea className="flex-1 p-3">
                 {messages.map((msg) => (
-                  <div key={msg.id} className={`mb-3 p-2 rounded-lg max-w-xs break-words ${msg.username === (user.username || user.id) ? 'bg-blue-600 ml-auto' : 'bg-gray-700 mr-auto'}`}>
+                  <div key={msg.id} className={`mb-3 p-2 rounded-lg max-w-xs break-words ${msg.username === user?.fullName ? 'bg-blue-600 ml-auto' : 'bg-gray-700 mr-auto'}`}>
                     <p className="text-xs text-gray-400 mb-1">{msg.username} - {new Date(msg.createdAt).toLocaleTimeString()}</p>
                     <p>{msg.message}</p>
                   </div>
