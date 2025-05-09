@@ -20,12 +20,12 @@ import {
   Users,
   Terminal,
   Save,
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
+  MessageSquare,
+  // Mic, MicOff, Video, VideoOff, // Removed WebRTC icons
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 
 interface Message {
   id: number;
@@ -55,16 +55,6 @@ interface UserLeftRoomData {
   userCount?: number;
 }
 
-interface SignalData {
-  fromId: string;
-  targetId?: string;
-  signal: {
-    sdp?: RTCSessionDescriptionInit;
-    candidate?: RTCIceCandidateInit;
-  };
-  roomId: string;
-}
-
 // --- Constants ---
 const SOCKET_SERVER_URL =
   "https://codecollabbackend-production-e138.up.railway.app";
@@ -80,17 +70,7 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-const rtcConfiguration: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: "turn:relay1.expressturn.com:3480",
-      username: "174672021752747357",
-      credential: "DQyQiIIXACHLuNljl0XLUq8Xc3E=",
-    },
-  ],
-};
+// Removed rtcConfiguration
 
 export default function CodeCollabRoom() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -112,189 +92,120 @@ export default function CodeCollabRoom() {
   const [isOwner, setIsOwner] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("output");
 
-  // WebRTC State
-  const [activeMic, setActiveMic] = useState<boolean>(false);
-  const [activeVideo, setActiveVideo] = useState<boolean>(false);
-  const [connections, setConnections] = useState<{
-    [key: string]: RTCPeerConnection;
-  }>({});
-  const [remoteStreams, setRemoteStreams] = useState<{
-    [key: string]: MediaStream;
-  }>({});
-  const [remotePeers, setRemotePeers] = useState<string[]>([]);
-  const [isSettingUpMedia, setIsSettingUpMedia] = useState<boolean>(false);
+  // Removed WebRTC State (activeMic, activeVideo, connections, remoteStreams, remotePeers, isSettingUpMedia)
 
   // --- Refs ---
   const editorRef = useRef<any>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const mediaLockRef = useRef<boolean>(false);
-  const pendingCandidatesRef = useRef<{
-    [key: string]: RTCIceCandidateInit[];
-  }>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
+  // Removed WebRTC Refs (localStreamRef, mediaLockRef, pendingCandidatesRef, localVideoRef)
 
-  // --- WebRTC Core Logic ---
-  const cleanupMedia = useCallback(
-    (cleanupConnectionsFully = false): void => {
-      console.log("Cleaning up media. Full cleanup:", cleanupConnectionsFully);
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => {
-          track.stop();
-          console.log("Local track stopped:", track.kind);
-        });
-        localStreamRef.current = null;
-      }
 
-      if (cleanupConnectionsFully) {
-        Object.values(connections).forEach((pc) => {
-          if (pc.signalingState !== "closed") {
-            pc.getSenders().forEach((sender) => {
-              if (sender.track && pc.signalingState !== "closed") {
-                try {
-                  pc.removeTrack(sender);
-                  console.log(
-                    "Removed track from peer connection during full cleanup:",
-                    sender.track.kind
-                  );
-                } catch (e) {
-                  console.warn("Error removing track during full cleanup:", e);
-                }
-              }
-            });
-          }
-        });
-      }
-    },
-    [connections]
-  );
+  // --- Editor and Core Logic Callbacks ---
+  const handleEditorDidMount = (editor: any) => {
+    editorRef.current = editor;
+  };
 
-  const handleCall = useCallback(
-    async (peerId: string, peerConnection?: RTCPeerConnection): Promise<void> => {
-      const pc = peerConnection || connections[peerId];
-      if (!pc || !user?.id || pc.signalingState === "closed") {
-        console.warn(
-          `handleCall: PC not available, user not loaded, or PC closed for ${peerId}.`
-        );
-        return;
-      }
-      if (pc.signalingState === "have-local-offer") {
-        console.warn(
-          `handleCall: Already have local offer for ${peerId}, skipping.`
-        );
-        return;
-      }
-
-      try {
-        console.log(`Creating offer for ${peerId}`);
-        const offer = await pc.createOffer();
-        if (pc.connectionState !== 'closed') {
-          console.warn(
-            `handleCall: Signaling state changed before setLocalDescription for ${peerId}. Current: ${pc.signalingState}`
-          );
-          return;
-        }
-        await pc.setLocalDescription(offer);
-
-        socket.emit("signal", {
-          roomId,
-          signal: { sdp: pc.localDescription },
-          fromId: user.id,
-          targetId: peerId,
-        });
-      } catch (error) {
-        console.error(`Error creating offer for ${peerId}:`, error);
-      }
-    },
-    [connections, roomId, user?.id]
-  );
-
-  const createPeerConnection = useCallback(
-    (peerId: string): RTCPeerConnection => {
-      console.log(`Creating new RTCPeerConnection for peer: ${peerId}`);
-      const pc = new RTCPeerConnection(rtcConfiguration);
-
-      pc.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
-        if (event.candidate && user?.id) {
-          socket.emit("signal", {
-            roomId,
-            signal: { candidate: event.candidate.toJSON() },
-            fromId: user.id,
-            targetId: peerId,
-          });
-        }
-      };
-
-      pc.ontrack = (event: RTCTrackEvent) => {
-        console.log(
-          `Track received from ${peerId}:`,
-          event.track.kind,
-          "Stream IDs:",
-          event.streams.map((s) => s.id)
-        );
-        if (event.streams && event.streams[0]) {
-          setRemoteStreams((prev) => ({
-            ...prev,
-            [peerId]: event.streams[0],
-          }));
-        } else {
-          console.warn(
-            `No stream found in ontrack event for ${peerId}. Creating new stream for track.`
-          );
-          const inboundStream = new MediaStream();
-          inboundStream.addTrack(event.track);
-          setRemoteStreams((prev) => ({
-            ...prev,
-            [peerId]: inboundStream,
-          }));
-        }
-      };
-
-      pc.oniceconnectionstatechange = () =>
-        console.log(`ICE connection state for ${peerId}: ${pc.iceConnectionState}`);
-      pc.onsignalingstatechange = () =>
-        console.log(`Signaling state for ${peerId}: ${pc.signalingState}`);
-      pc.onconnectionstatechange = () => {
-        console.log(`Connection state for ${peerId}: ${pc.connectionState}`);
-        if (
-          pc.connectionState === "failed" ||
-          pc.connectionState === "disconnected" ||
-          pc.connectionState === "closed"
-        ) {
-          console.warn(`Connection with ${peerId} is ${pc.connectionState}.`);
-        }
-      };
-
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => {
-          if (track.readyState === "live") {
-            try {
-              pc.addTrack(track, localStreamRef.current!);
-            } catch (e) {
-              console.error(`Error adding track to PC for ${peerId}:`, e);
-            }
-          }
-        });
-      }
-      return pc;
+  const handleEditorChange = useCallback(
+    (value: string | undefined) => {
+      if (value === undefined) return;
+      setCode(value);
+      socket.emit("code_change", { roomId, code: value, userId: user?.id });
     },
     [roomId, user?.id]
   );
 
-  const handleUserJoined = useCallback(
-    (joiningUserId: string): void => {
-      if (joiningUserId === user?.id || connections[joiningUserId]) return;
-
-      console.log(`User ${joiningUserId} joined. Creating peer connection.`);
-      const newPc = createPeerConnection(joiningUserId);
-      setConnections((prev) => ({ ...prev, [joiningUserId]: newPc }));
-
-      if (localStreamRef.current && (activeMic || activeVideo)) {
-        handleCall(joiningUserId, newPc);
-      }
+  const handleCursorChange = useCallback(
+    (position: { lineNumber: number; column: number }) => {
+      socket.emit("cursor_change", {
+        roomId,
+        userId: user?.id,
+        position,
+      });
     },
-    [user?.id, connections, createPeerConnection, activeMic, activeVideo, handleCall]
+    [roomId, user?.id]
   );
+
+  const handleLanguageChange = useCallback(
+    (language: string) => {
+      setSelectedLanguage(language);
+      socket.emit("language_change", { roomId, language, userId: user?.id });
+    },
+    [roomId, user?.id]
+  );
+
+  const handleSendMessage = useCallback(async () => {
+    if (newMessage.trim() && user) {
+      try {
+        const response = await api.post(`/rooms/${roomId}/messages`, {
+          message: newMessage,
+          username: user.username || user.id,
+        });
+        // Message will be broadcasted via socket, no need to setMessages here
+        setNewMessage("");
+      } catch (error) {
+        console.error("Failed to send message:", error);
+      }
+    }
+  }, [newMessage, roomId, user]);
+
+  const handleRunCode = useCallback(async () => {
+    setIsRunning(true);
+    setOutput("Running code...");
+    try {
+      const response = await api.post("/execute", {
+        language: selectedLanguage,
+        code,
+      });
+      setOutput(response.data.output);
+    } catch (error: any) {
+      setOutput(
+        `Error: ${error.response?.data?.error || error.message || "Unknown error"}`
+      );
+    } finally {
+      setIsRunning(false);
+      setActiveTab("output");
+    }
+  }, [code, selectedLanguage]);
+
+  const handleSaveCode = useCallback(async () => {
+    if (!isOwner) {
+      alert("Only the room owner can save the code.");
+      return;
+    }
+    setIsRunningSave(true);
+    try {
+      await api.post(`/rooms/${roomId}/code`, { code, language: selectedLanguage });
+      socket.emit("code_saved_confirmation", { roomId }); // Inform others
+      alert("Code saved successfully!");
+    } catch (error) {
+      console.error("Failed to save code:", error);
+      alert("Failed to save code.");
+    } finally {
+      setIsRunningSave(false);
+    }
+  }, [code, selectedLanguage, roomId, isOwner]);
+
+  const handleLeaveRoom = useCallback(() => {
+    socket.emit("leave_room", { roomId, userId: user?.id });
+    router.push("/");
+  }, [roomId, user?.id, router]);
+
+  const handleRefreshCode = useCallback(async () => {
+    try {
+      const response = await api.get(`/rooms/${roomId}/code`);
+      const { code: fetchedCode, language: fetchedLanguage } = response.data;
+      setCode(fetchedCode);
+      setSelectedLanguage(fetchedLanguage);
+      if (editorRef.current) {
+         editorRef.current.setValue(fetchedCode);
+      }
+      socket.emit("code_change", { roomId, code: fetchedCode, userId: user?.id });
+      socket.emit("language_change", { roomId, language: fetchedLanguage, userId: user?.id });
+    } catch (error) {
+      console.error("Failed to refresh code:", error);
+    }
+  }, [roomId, user?.id]);
+
 
   // --- Effects ---
   useEffect(() => {
@@ -303,774 +214,385 @@ export default function CodeCollabRoom() {
     }
   }, [messages]);
 
-  useEffect(() => {
-    if (isSettingUpMedia) return;
-
-    const setupOrTeardownMedia = async () => {
-      if (mediaLockRef.current) return;
-      mediaLockRef.current = true;
-      setIsSettingUpMedia(true);
-
-      try {
-        if (activeMic || activeVideo) {
-          let needsNewStream = !localStreamRef.current;
-          if (localStreamRef.current) {
-            const audioTracks = localStreamRef.current.getAudioTracks();
-            const videoTracks = localStreamRef.current.getVideoTracks();
-            if (
-              (activeMic && audioTracks.length === 0) ||
-              (!activeMic && audioTracks.length > 0 && audioTracks.some((t) => t.enabled))
-            ) {
-              needsNewStream = true;
-            }
-            if (
-              (activeVideo && videoTracks.length === 0) ||
-              (!activeVideo && videoTracks.length > 0 && videoTracks.some((t) => t.enabled))
-            ) {
-              needsNewStream = true;
-            }
-          }
-
-          if (needsNewStream) {
-            cleanupMedia(false);
-
-            const constraints: MediaStreamConstraints = {
-              audio: activeMic,
-              video: activeVideo ? { width: 320, height: 240 } : false,
-            };
-            console.log("Requesting media with constraints:", constraints);
-            await new Promise((resolve) => setTimeout(resolve, 200));
-
-            try {
-              const stream = await navigator.mediaDevices.getUserMedia(constraints);
-              localStreamRef.current = stream;
-
-              if (localVideoRef.current) {
-                localVideoRef.current.srcObject = stream;
-              }
-
-              console.log("Local stream acquired:", stream.id);
-            } catch (error: any) {
-              console.error("Error accessing media devices:", error);
-              if (error instanceof DOMException) {
-                console.error(`DOMException: ${error.name} - ${error.message}`);
-                if (error.name === "NotAllowedError" || error.name === "NotFoundError") {
-                  setActiveMic(false);
-                  setActiveVideo(false);
-                } else {
-                  if (constraints.audio) setActiveMic(false);
-                  if (constraints.video) setActiveVideo(false);
-                }
-              } else {
-                setActiveMic(false);
-                setActiveVideo(false);
-              }
-              localStreamRef.current = null;
-            }
-          }
-        } else {
-          cleanupMedia(true);
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = null;
-          }
-        }
-      } finally {
-        mediaLockRef.current = false;
-        setIsSettingUpMedia(false);
-      }
-    };
-    setupOrTeardownMedia();
-  }, [activeMic, activeVideo, cleanupMedia, isSettingUpMedia]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    console.log("Media state or connections changed. Updating peer connections.");
-    Object.entries(connections).forEach(([peerId, pc]) => {
-      if (pc.signalingState === "closed") return;
-
-      let renegotiationNeeded = false;
-      const currentStream = localStreamRef.current;
-
-      const audioTrack =
-        currentStream && activeMic ? currentStream.getAudioTracks()[0] : null;
-      const audioSender = pc.getSenders().find((s) => s.track && s.track.kind === "audio");
-      if (audioTrack) {
-        if (audioSender) {
-          if (audioSender.track !== audioTrack) {
-            audioSender
-              .replaceTrack(audioTrack)
-              .then(() => console.log(`Audio track replaced for ${peerId}`))
-              .catch((e) => console.error(`Audio replaceTrack failed for ${peerId}`, e));
-          }
-        } else {
-          pc.addTrack(audioTrack, currentStream!);
-          console.log(`Audio track added for ${peerId}`);
-          renegotiationNeeded = true;
-        }
-      } else if (audioSender) {
-        try {
-          if (pc.connectionState !== 'closed') pc.removeTrack(audioSender);
-          console.log(`Audio track removed for ${peerId}`);
-          renegotiationNeeded = true;
-        } catch (e) {
-          console.warn(`Error removing audio sender for ${peerId}`, e);
-        }
-      }
-
-      const videoTrack =
-        currentStream && activeVideo ? currentStream.getVideoTracks()[0] : null;
-      const videoSender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
-      if (videoTrack) {
-        if (videoSender) {
-          if (videoSender.track !== videoTrack) {
-            videoSender
-              .replaceTrack(videoTrack)
-              .then(() => console.log(`Video track replaced for ${peerId}`))
-              .catch((e) => console.error(`Video replaceTrack failed for ${peerId}`, e));
-          }
-        } else {
-          pc.addTrack(videoTrack, currentStream!);
-          console.log(`Video track added for ${peerId}`);
-          renegotiationNeeded = true;
-        }
-      } else if (videoSender) {
-        try {
-          if (pc.connectionState !== 'closed') pc.removeTrack(videoSender);
-          console.log(`Video track removed for ${peerId}`);
-          renegotiationNeeded = true;
-        } catch (e) {
-          console.warn(`Error removing video sender for ${peerId}`, e);
-        }
-      }
-
-      if (
-        renegotiationNeeded &&
-        pc.signalingState !== "have-local-offer" &&
-        pc.connectionState !== 'closed'
-      ) {
-        console.log(`Requesting renegotiation with ${peerId} due to track changes.`);
-        handleCall(peerId, pc);
-      }
-    });
-  }, [connections, handleCall, user?.id, activeMic, activeVideo]);
+  // Removed WebRTC related useEffects for media setup and peer connection updates
 
   useEffect(() => {
     if (!roomId || !user?.id) return;
 
-    const onSignal = async (data: SignalData): Promise<void> => {
-      if (data.roomId !== roomId || (data.targetId && data.targetId !== user.id))
-        return;
-      if (data.fromId === user.id) return;
+    console.log(`User ${user.id} attempting to join room ${roomId}`);
+    socket.emit("join_room", { roomId, userId: user.id, username: user.username });
 
-      const { fromId, signal } = data;
-      let pc = connections[fromId];
-
-      if (!pc || pc.signalingState === "closed") {
-        console.log(
-          `Received signal from ${pc ? "closed" : "new"} peer ${fromId}. Creating/re-creating connection.`
-        );
-        pc = createPeerConnection(fromId);
-        setConnections((prev) => ({ ...prev, [fromId]: pc }));
+    // Socket event handlers
+    const onConnect = () => console.log("Socket connected");
+    const onDisconnect = () => console.log("Socket disconnected");
+    
+    const onRoomJoined = (data: { userCount: number, isOwner: boolean, initialCode?: string, initialLanguage?: string }) => {
+      console.log("Successfully joined room:", data);
+      setUserNumber(data.userCount);
+      setIsOwner(data.isOwner);
+      if (data.initialCode && editorRef.current && editorRef.current.getValue() !== data.initialCode) {
+        setCode(data.initialCode);
+        if (editorRef.current) editorRef.current.setValue(data.initialCode);
       }
-
-      try {
-        if (signal.sdp) {
-          console.log(`Received SDP (${signal.sdp.type}) from ${fromId}`);
-          if (
-            signal.sdp.type === "offer" &&
-            pc.signalingState === "have-local-offer"
-          ) {
-            console.warn(
-              `Glare: Received offer from ${fromId} while in state ${pc.signalingState}.`
-            );
-          }
-
-          if (
-            !(
-              pc.signalingState === "have-local-offer" &&
-              signal.sdp.type === "offer"
-            )
-          ) {
-            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-          } else if (
-            pc.signalingState === "have-local-offer" &&
-            signal.sdp.type === "offer"
-          ) {
-            console.log(
-              "Skipping setRemoteDescription for incoming offer due to glare and local offer presence."
-            );
-          }
-
-          if (pendingCandidatesRef.current[fromId]) {
-            console.log(
-              `Processing ${pendingCandidatesRef.current[fromId].length} queued ICE candidates for ${fromId}`
-            );
-            for (const candidate of pendingCandidatesRef.current[fromId]) {
-              try {
-                if (pc.remoteDescription && pc.signalingState !== "closed") {
-                  await pc.addIceCandidate(candidate);
-                } else {
-                  console.warn(
-                    `Cannot add queued ICE candidate for ${fromId}, remoteDescription not set or PC closed.`
-                  );
-                }
-              } catch (e) {
-                console.error(`Error adding queued ICE candidate for ${fromId}:`, e);
-              }
-            }
-            delete pendingCandidatesRef.current[fromId];
-          }
-
-          if (
-            signal.sdp.type === "offer" &&
-            pc.signalingState !== "have-local-offer" &&
-            pc.signalingState !== "closed"
-          ) {
-            const answer = await pc.createAnswer();
-            if (pc.connectionState !== 'closed') {
-              await pc.setLocalDescription(answer);
-              socket.emit("signal", {
-                roomId,
-                signal: { sdp: pc.localDescription },
-                fromId: user.id,
-                targetId: fromId,
-              });
-              console.log(`Sent answer to ${fromId}`);
-            } else {
-              console.warn(`PC for ${fromId} closed before sending answer.`);
-            }
-          }
-        } else if (signal.candidate) {
-          const candidate = new RTCIceCandidate(signal.candidate);
-          if (pc.remoteDescription && pc.signalingState !== "closed") {
-            await pc.addIceCandidate(candidate);
-          } else {
-            pendingCandidatesRef.current[fromId] = [
-              ...(pendingCandidatesRef.current[fromId] || []),
-              candidate,
-            ];
-            console.log(
-              `Queued ICE candidate from ${fromId} (Remote desc not set or PC closed)`
-            );
-          }
-        }
-      } catch (error: any) {
-        console.error(
-          `Error handling WebRTC signal from ${fromId}:`,
-          error.name,
-          error.message,
-          signal
-        );
-        if (error.name === "InvalidStateError" || error.message.includes("Rollback")) {
-          console.warn(
-            `Signaling error with ${fromId}, state: ${pc.signalingState}. Consider manual intervention or specific error handling.`,
-            error
-          );
-        }
-      }
-      // Set initial remote peers
-      if (data.peers) {
-        setRemotePeers(data.peers.filter(peer => peer.userId !== user?.id));
+      if (data.initialLanguage) {
+        setSelectedLanguage(data.initialLanguage);
       }
     };
 
     const onUserJoinedRoom = (data: UserJoinedRoomData): void => {
       if (data.userId && data.userId !== user?.id) {
-        setRemotePeers((prev) => (prev.includes(data.userId) ? prev : [...prev, data.userId]));
-        handleUserJoined(data.userId);
+        console.log(`User ${data.username || data.userId} joined. Current count: ${data.userCount}`);
         if (data.userCount !== undefined) setUserNumber(data.userCount);
+      } else if (data.userId === user?.id && data.userCount !== undefined) {
+        setUserNumber(data.userCount);
       }
     };
 
     const onUserLeftRoom = (data: UserLeftRoomData): void => {
       if (data.userId && data.userId !== user?.id) {
-        console.log(`User ${data.userId} left. Cleaning up WebRTC connection.`);
-        if (connections[data.userId]) {
-          connections[data.userId].close();
-          setConnections((prev) => {
-            const newConns = { ...prev };
-            delete newConns[data.userId];
-            return newConns;
-          });
-        }
-        setRemoteStreams((prev) => {
-          const newStreams = { ...prev };
-          delete newStreams[data.userId];
-          return newStreams;
-        });
-        setRemotePeers((prev) => prev.filter((id) => id !== data.userId));
-        delete pendingCandidatesRef.current[data.userId];
+        console.log(`User ${data.userId} left. Current count: ${data.userCount}`);
         if (data.userCount !== undefined) setUserNumber(data.userCount);
       }
     };
+    
+    const onUserCodeChange = (data: { userId: string; code: string }) => {
+      if (data.userId !== user?.id) {
+        setCode(data.code);
+        if (editorRef.current && editorRef.current.getValue() !== data.code) {
+          const currentPosition = editorRef.current.getPosition();
+          editorRef.current.setValue(data.code);
+          if (currentPosition) editorRef.current.setPosition(currentPosition);
+        }
+      }
+    };
 
-    socket.on("signal", onSignal);
+    const onUserCursorChange = (data: { userId: string; position: { lineNumber: number; column: number } }) => {
+      if (data.userId !== user?.id) {
+        setRemoteCursors((prev) =>
+          prev.filter((c) => c.userId !== data.userId).concat({
+            userId: data.userId,
+            lineNumber: data.position.lineNumber,
+            column: data.position.column
+          })
+        );
+      }
+    };
+    
+    const onUserLanguageChange = (data: { userId: string; language: string }) => {
+      if (data.userId !== user?.id) {
+        setSelectedLanguage(data.language);
+      }
+    };
+
+    const onCodeSaved = () => {
+      alert("The room owner has saved the code.");
+      handleRefreshCode(); // Refresh to get the latest saved version
+    };
+
+    const onReceiveMessage = (message: Message) => {
+      setMessages((prevMessages) => [...prevMessages, message]);
+    };
+    
+    const onUserCountUpdate = (data: UserCountData) => {
+      setUserNumber(data.count);
+    };
+
+    const onSetOwner = (data: { ownerId: string }) => {
+      setIsOwner(data.ownerId === user?.id);
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("room_joined", onRoomJoined);
     socket.on("user_joined_room", onUserJoinedRoom);
     socket.on("user_left_room", onUserLeftRoom);
+    // Removed socket.on("signal", onSignal);
+    socket.on("user_code_change", onUserCodeChange);
+    socket.on("user_cursor_change", onUserCursorChange);
+    socket.on("user_language_change", onUserLanguageChange);
+    socket.on("code_saved", onCodeSaved);
+    socket.on("receive_message", onReceiveMessage);
+    socket.on("user_count_update", onUserCountUpdate);
+    socket.on("set_owner", onSetOwner);
+
+    // Fetch initial messages
+    api.get(`/rooms/${roomId}/messages`)
+      .then(response => setMessages(response.data))
+      .catch(error => console.error("Failed to fetch initial messages:", error));
+
+    // Fetch initial code
+     api.get(`/rooms/${roomId}/code`)
+      .then(response => {
+        const { code: initialCode, language: initialLanguage, ownerId } = response.data;
+        if (editorRef.current && editorRef.current.getValue() !== initialCode) {
+            setCode(initialCode);
+            if (editorRef.current) editorRef.current.setValue(initialCode);
+        }
+        setSelectedLanguage(initialLanguage);
+        setIsOwner(ownerId === user?.id);
+      })
+      .catch(error => console.error("Failed to fetch initial code:", error));
+
 
     return () => {
-      socket.off("signal", onSignal);
+      console.log("Cleaning up CodeCollabRoom effects, leaving room:", roomId);
+      socket.emit("leave_room", { roomId, userId: user?.id });
+      
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("room_joined", onRoomJoined);
       socket.off("user_joined_room", onUserJoinedRoom);
       socket.off("user_left_room", onUserLeftRoom);
-    };
-  }, [roomId, user?.id, connections, createPeerConnection, handleUserJoined]);
-
-  useEffect(() => {
-    if (!roomId || !user?.fullName || !user?.id) return;
-
-    socket.emit("join_room", { roomId, username: user.fullName, userId: user.id });
-    socket.emit("get_user_count", { roomId });
-
-    const onReceiveMessage = (data: Message) => setMessages((prev) => [...prev, data]);
-    const onReceiveCode = (data: { code: string }) =>
-      setCode((prevCode) => (prevCode === data.code ? prevCode : data.code));
-    const onReceiveCursor = (data: RemoteCursor & { username: string }) => {
-      if (data.username !== user?.fullName) {
-        setRemoteCursors((prev) => {
-          const updated = prev.filter((cursor) => cursor.userId !== data.username);
-          return [
-            ...updated,
-            { userId: data.username, lineNumber: data.lineNumber, column: data.column },
-          ];
-        });
-      }
-    };
-    const onUserCount = (data: UserCountData) => setUserNumber(data.count);
-    const onUserCountUpdate = (data: UserCountData) => setUserNumber(data.count);
-
-    socket.on("receive_message", onReceiveMessage);
-    socket.on("receive_code", onReceiveCode);
-    socket.on("receive_cursor", onReceiveCursor);
-    socket.on("user_count", onUserCount);
-    socket.on("user_count_update", onUserCountUpdate);
-
-    return () => {
+      // Removed socket.off("signal", onSignal);
+      socket.off("user_code_change", onUserCodeChange);
+      socket.off("user_cursor_change", onUserCursorChange);
+      socket.off("user_language_change", onUserLanguageChange);
+      socket.off("code_saved", onCodeSaved);
       socket.off("receive_message", onReceiveMessage);
-      socket.off("receive_code", onReceiveCode);
-      socket.off("receive_cursor", onReceiveCursor);
-      socket.off("user_count", onUserCount);
       socket.off("user_count_update", onUserCountUpdate);
-
-      console.log("Main socket effect cleanup: Leaving room and full cleanup.");
-      cleanupMedia(true);
-      Object.values(connections).forEach((conn) => {
-        if (conn.signalingState !== "closed") conn.close();
-      });
-      setConnections({});
-      setRemoteStreams({});
-      setRemotePeers([]);
-      pendingCandidatesRef.current = {};
-      if (user?.id && user.fullName) {
-        socket.emit("leave_room", {
-          roomId,
-          username: user.fullName,
-          userId: user.id,
-        });
-      }
+      socket.off("set_owner", onSetOwner);
     };
-  }, [roomId, user?.id, user?.fullName, cleanupMedia, connections]);
+  }, [roomId, user, router, isOwner, handleRefreshCode]); // Added handleRefreshCode as a dependency
 
-  useEffect(() => {
-    const loadData = async () => {
-      if (!roomId || !user?.id) return;
-      try {
-        const [messagesRes, codeRes, ownerRes] = await Promise.all([
-          api.get(`/rooms/${roomId}/messages`),
-          api.get(`/rooms/${roomId}/code`),
-          api.get(`/rooms/${roomId}/owner`),
-        ]);
-        setMessages(messagesRes.data as Message[]);
-        if (codeRes.data?.[0]?.code) setCode(codeRes.data[0].code as string);
-        setIsOwner(ownerRes.data === user.id);
-      } catch (error) {
-        console.error("Error loading initial data:", error);
-      }
-    };
-    loadData();
-  }, [roomId, user?.id]);
-
-  // --- Action Handlers ---
-  const handleMicClick = (): void => {
-    if (isSettingUpMedia) return;
-    setActiveMic((prev) => !prev);
-  };
-
-  const handleVideoClick = (): void => {
-    if (isSettingUpMedia) return;
-    setActiveVideo((prev) => !prev);
-  };
-
-  const handleEditorChange = (value: string | undefined): void => {
-    if (value !== undefined) {
-      setCode(value);
-      socket.emit("send_code", { roomId, code: value });
-    }
-  };
-
-  const handleMount = (editor: any, monacoInstance: any): void => {
-    editorRef.current = editor;
-    editor.onDidChangeCursorPosition((e: any) => {
-      const { lineNumber, column } = e.position;
-      if (user?.fullName) {
-        socket.emit("send_cursor", {
-          roomId,
-          lineNumber,
-          column,
-          username: user.fullName,
-        });
-      }
-    });
-  };
-
-  const handleLogout = (): void => {
-    cleanupMedia(true);
-    Object.values(connections).forEach((conn) => {
-      if (conn.signalingState !== "closed") conn.close();
-    });
-    setConnections({});
-    setRemoteStreams({});
-    setRemotePeers([]);
-    pendingCandidatesRef.current = {};
-    if (user?.id && user.fullName) {
-      socket.emit("leave_room", {
-        roomId,
-        username: user.fullName,
-        userId: user.id,
-      });
-    }
-    router.push("/dashboard");
-  };
-
-  const saveCode = async (): Promise<void> => {
-    if (!isOwner) return;
-    setIsRunningSave(true);
-    try {
-      await api.post("/save", { code, roomId });
-    } catch (error) {
-      console.error("Error saving code:", error);
-    } finally {
-      setIsRunningSave(false);
-    }
-  };
-
-  const runCode = async (): Promise<void> => {
-    setIsRunning(true);
-    setOutput("Running code...");
-    try {
-      const response = await api.post<{ output?: string; error?: string }>(
-        "/run",
-        { code, language: selectedLanguage }
-      );
-      setOutput(
-        response.data.output || response.data.error || "Code executed successfully, no output."
-      );
-    } catch (error: any) {
-      setOutput(error.response?.data?.error || error.message || "Failed to run code");
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  const handleSubmitMessage = (e: React.FormEvent): void => {
-    e.preventDefault();
-    if (!newMessage.trim() || !user?.fullName) return;
-    socket.emit("send_message", {
-      roomId,
-      text: newMessage,
-      username: user.fullName,
-    });
-    setNewMessage("");
-  };
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        Loading user...
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-screen bg-background text-foreground font-sans">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary/10 to-secondary/10">
-          <div className="flex items-center gap-3">
-            <Code className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold tracking-tight">CodeCollab</h1>
-            <Separator orientation="vertical" className="h-6 mx-2" />
-            <div className="text-sm text-muted-foreground">
-              Room: <span className="font-semibold text-foreground">{roomId}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={activeMic ? "secondary" : "outline"}
-                  size="icon"
-                  onClick={handleMicClick}
-                  disabled={isSettingUpMedia}
-                  className="h-9 w-9 rounded-full"
-                >
-                  {activeMic ? (
-                    <Mic className="h-5 w-5 text-green-500" />
-                  ) : (
-                    <MicOff className="h-5 w-5 text-red-500" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{activeMic ? "Disable Microphone" : "Enable Microphone"}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={activeVideo ? "secondary" : "outline"}
-                  size="icon"
-                  onClick={handleVideoClick}
-                  disabled={isSettingUpMedia}
-                  className="h-9 w-9 rounded-full"
-                >
-                  {activeVideo ? (
-                    <Video className="h-5 w-5 text-green-500" />
-                  ) : (
-                    <VideoOff className="h-5 w-5 text-red-500" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{activeVideo ? "Disable Camera" : "Enable Camera"}</TooltipContent>
-            </Tooltip>
-            <div className="flex items-center gap-2 bg-secondary/20 px-3 py-1 rounded-full">
-              <Users className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium">{userNumber} Active</span>
-            </div>
-            {isOwner && (
-              <div className="px-3 py-1 rounded-full bg-green-500/20 text-green-900 text-sm font-medium">
-                Owner
-              </div>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 hover:bg-destructive/10 hover:border-destructive"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>Leave</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Leave Room</TooltipContent>
-            </Tooltip>
-          </div>
-        </header>
+  <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
+    {/* Header */}
+    <header className="p-4 border-b border-zinc-800 flex flex-wrap gap-3 justify-between items-start sm:items-center">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-3">
+          <Code className="h-6 w-6 text-indigo-400" />
+          <h1 className="text-xl font-medium">
+            Room: <span className="text-indigo-400 font-semibold">{roomId}</span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-2 bg-zinc-900 px-3 py-1 rounded-full text-sm">
+          <Users className="h-4 w-4 text-zinc-400" />
+          <span className="font-medium">{userNumber}</span>
+        </div>
+      </div>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={handleLeaveRoom} 
+        className="flex items-center mt-2 sm:mt-0 border-zinc-700 hover:bg-zinc-800 hover:text-red-400 transition-colors"
+      >
+        <LogOut className="mr-2 h-4 w-4" /> Leave Room
+      </Button>
+    </header>
 
-        {/* Main Content */}
-        <main className="flex flex-1 overflow-hidden">
-          {/* Chat Panel */}
-          <aside className="hidden lg:flex flex-col w-96 border-r bg-background">
-            <div className="flex items-center px-4 py-3 border-b">
-              <User className="h-5 w-5 mr-2 text-primary" />
-              <h2 className="text-lg font-semibold">Team Chat</h2>
-            </div>
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
-                {messages.map((msg, index) => (
-                  <div
-                    key={index}
-                    className={`flex flex-col ${
-                      msg.username === user?.fullName ? "items-end" : "items-start"
-                    }`}
-                  >
-                    <div
-                      className={`text-xs font-medium ${
-                        msg.username === user?.fullName ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      {msg.username === user?.fullName ? "You" : msg.username}
-                    </div>
-                    <div
-                      className={`max-w-[80%] rounded-xl px-4 py-2 text-sm shadow-sm ${
-                        msg.username === user?.fullName
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-foreground"
-                      }`}
-                    >
-                      {msg.message}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {new Date(msg.createdAt).toLocaleTimeString()}
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-            <form onSubmit={handleSubmitMessage} className="flex p-4 border-t gap-2">
-              <Input
-                type="text"
-                placeholder="Type your message..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                className="flex-1 rounded-full"
-              />
+    {/* Main Content */}
+    <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+      {/* Left Pane */}
+      <div className="flex flex-col flex-1 w-full lg:w-2/3 p-3 space-y-3">
+        {/* Editor Controls */}
+        <div className="flex flex-col md:flex-row justify-between gap-3 p-3 bg-zinc-900 rounded-lg shadow-md">
+          <div className="flex flex-wrap gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRunCode} 
+                  disabled={isRunning}
+                  className="bg-zinc-800 border-zinc-700 hover:bg-zinc-700 hover:border-zinc-600"
+                >
+                  {isRunning ? (
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin text-indigo-400" />
+                  ) : (
+                    <Terminal className="mr-2 h-4 w-4 text-indigo-400" />
+                  )}
+                  Run
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-zinc-800 border-zinc-700">
+                <p>Execute Code</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {isOwner && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button type="submit" size="icon" className="rounded-full">
-                    <Send className="h-5 w-5" />
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleSaveCode} 
+                    disabled={isRunningSave}
+                    className="bg-zinc-800 border-zinc-700 hover:bg-zinc-700 hover:border-zinc-600"
+                  >
+                    {isRunningSave ? (
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin text-indigo-400" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4 text-indigo-400" />
+                    )}
+                    Save
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Send Message</TooltipContent>
+                <TooltipContent className="bg-zinc-800 border-zinc-700">
+                  <p>Save Code (Owner only)</p>
+                </TooltipContent>
               </Tooltip>
-            </form>
-          </aside>
+            )}
 
-          {/* Editor & Tabs */}
-          <div className="flex flex-col flex-1">
-            {/* Editor */}
-            <div className="flex-1 border-b">
-              <MonacoEditor
-                height="100%"
-                language={selectedLanguage}
-                value={code}
-                onChange={handleEditorChange}
-                onMount={handleMount}
-                theme="vs-dark"
-                options={{
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  minimap: { enabled: false },
-                  contextmenu: false,
-                  fontSize: 14,
-                  lineNumbers: "on",
-                  glyphMargin: true,
-                }}
-              />
-            </div>
-
-            {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid grid-cols-3 w-full rounded-none border-b bg-secondary/10">
-                <TabsTrigger value="output" className="flex items-center gap-2">
-                  <Terminal className="h-4 w-4" /> Output
-                </TabsTrigger>
-                <TabsTrigger value="video" className="flex items-center gap-2">
-                  <Video className="h-4 w-4" /> Video
-                </TabsTrigger>
-                <TabsTrigger value="actions" className="flex items-center gap-2">
-                  <Check className="h-4 w-4" /> Actions
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="output" className="p-4 max-h-64 overflow-y-auto bg-background/50">
-                <pre className="whitespace-pre-wrap break-all font-mono text-sm text-muted-foreground">
-                  {output}
-                </pre>
-              </TabsContent>
-              <TabsContent value="video" className="p-4 bg-background/50">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {activeVideo && (
-                    <div className="flex flex-col items-center">
-                      <video
-                        ref={localVideoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="w-full max-w-xs h-48 bg-gray-900 rounded-lg shadow-lg object-cover"
-                      />
-                      <span className="text-sm text-muted-foreground mt-2">You</span>
-                    </div>
-                  )}
-                  {remotePeers.map((peerId) => {
-                    const stream = remoteStreams[peerId];
-                    if (!stream) return null;
-                    return (
-                      <div key={peerId} className="flex flex-col items-center">
-                        <video
-                          ref={(videoElement) => {
-                            if (videoElement && stream) {
-                              videoElement.srcObject = stream;
-                              videoElement.play().catch((e) => console.error("Video play failed:", e));
-                            }
-                          }}
-                          autoPlay
-                          playsInline
-                          className="w-full max-w-xs h-48 bg-gray-900 rounded-lg shadow-lg object-cover"
-                        />
-                        <span className="text-sm text-muted-foreground mt-2">{peerId}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {!activeVideo && remotePeers.length === 0 && (
-                  <p className="text-center text-muted-foreground">
-                    Enable your camera or microphone to start a video call.
-                  </p>
-                )}
-              </TabsContent>
-              <TabsContent value="actions" className="p-4 bg-background/50">
-                <div className="flex flex-wrap gap-4 items-center">
-                  <div className="flex items-center gap-2">
-                    <label htmlFor="language-select" className="text-sm font-medium">Language:</label>
-                    <select
-                      id="language-select"
-                      value={selectedLanguage}
-                      onChange={(e) => setSelectedLanguage(e.target.value)}
-                      className="p-2 border rounded-lg bg-background text-foreground text-sm focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="python">Python</option>
-                      <option value="javascript">JavaScript</option>
-                      <option value="typescript">TypeScript</option>
-                      <option value="java">Java</option>
-                      <option value="csharp">C#</option>
-                      <option value="cpp">C++</option>
-                      <option value="go">Go</option>
-                      <option value="rust">Rust</option>
-                      <option value="php">PHP</option>
-                    </select>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={runCode}
-                        disabled={isRunning}
-                        className="flex items-center gap-2"
-                      >
-                        {isRunning ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 animate-spin" /> Running...
-                          </>
-                        ) : (
-                          <>
-                            <Terminal className="h-4 w-4" /> Run Code
-                          </>
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Execute the code</TooltipContent>
-                  </Tooltip>
-                  {isOwner && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={saveCode}
-                          disabled={isRunningSave}
-                          className="flex items-center gap-2"
-                        >
-                          {isRunningSave ? (
-                            <>
-                              <RefreshCw className="h-4 w-4 animate-spin" /> Saving...
-                            </>
-                          ) : (
-                            <>
-                              <Save className="h-4 w-4" /> Save Code
-                            </>
-                          )}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Save code to room</TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRefreshCode}
+                  className="bg-zinc-800 border-zinc-700 hover:bg-zinc-700 hover:border-zinc-600"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4 text-indigo-400" /> Refresh Code
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-zinc-800 border-zinc-700">
+                <p>Fetch latest saved code</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
-        </main>
+
+          <div className="w-full md:w-40">
+            <Select value={selectedLanguage} onValueChange={handleLanguageChange}>
+              <SelectTrigger className="bg-zinc-800 border-zinc-700 w-full hover:border-indigo-500 transition-colors focus:ring-1 focus:ring-indigo-500">
+                <SelectValue placeholder="Language" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-800 text-zinc-100 border-zinc-700">
+                <SelectItem value="python">Python</SelectItem>
+                <SelectItem value="javascript">JavaScript</SelectItem>
+                <SelectItem value="java">Java</SelectItem>
+                <SelectItem value="csharp">C#</SelectItem>
+                <SelectItem value="cpp">C++</SelectItem>
+                <SelectItem value="ruby">Ruby</SelectItem>
+                <SelectItem value="go">Go</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Editor */}
+        <div className="flex-1 min-h-[200px] rounded-lg overflow-hidden shadow-lg border border-zinc-800">
+          <MonacoEditor
+            language={selectedLanguage}
+            value={code}
+            onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
+            theme="vs-dark"
+            options={{
+              fontSize: 14,
+              fontFamily: 'JetBrains Mono, Consolas, monospace',
+              minimap: { enabled: true },
+              scrollBeyondLastLine: false,
+              lineNumbers: 'on',
+              renderLineHighlight: 'all',
+              cursorBlinking: 'smooth',
+              cursorStyle: 'line',
+              smoothScrolling: true,
+              padding: { top: 10 }
+            }}
+          />
+        </div>
+
+        {/* Output Tabs */}
+        <div className="h-48 md:h-1/4 lg:h-1/5 bg-zinc-900 rounded-lg shadow-md border border-zinc-800">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+            <TabsList className="bg-zinc-800 rounded-t-lg rounded-b-none border-b border-zinc-700 p-1">
+              <TabsTrigger 
+                value="output"
+                className="data-[state=active]:bg-zinc-900 data-[state=active]:text-indigo-400 data-[state=active]:shadow-none"
+              >
+                Output
+              </TabsTrigger>
+              <TabsTrigger 
+                value="terminal" 
+                disabled
+                className="opacity-50 cursor-not-allowed"
+              >
+                Terminal (Soon)
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent 
+              value="output" 
+              className="flex-1 overflow-auto p-3 text-sm bg-zinc-900 rounded-b-lg"
+            >
+              <pre className="whitespace-pre-wrap font-mono text-zinc-300">{output || "Code output will appear here."}</pre>
+            </TabsContent>
+            <TabsContent 
+              value="terminal" 
+              className="flex-1 overflow-auto p-3 text-sm bg-zinc-900 rounded-b-lg"
+            >
+              <p className="text-zinc-400 italic">Interactive terminal coming soon!</p>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
-    </TooltipProvider>
-  );
+
+      {/* Right Pane: Chat */}
+      <div className="flex flex-col w-full lg:w-1/3 p-3 border-t lg:border-t-0 lg:border-l border-zinc-800">
+        <div className="flex flex-col flex-1 bg-zinc-900 rounded-lg overflow-hidden shadow-md border border-zinc-800">
+          <h2 className="p-3 text-lg font-medium border-b border-zinc-800 flex items-center">
+            <MessageSquare className="h-5 w-5 mr-2 text-indigo-400" />
+            <span>Chat</span>
+          </h2>
+          <ScrollArea className="flex-1 p-3">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`mb-3 p-3 rounded-lg max-w-[85%] break-words shadow-sm ${
+                  msg.username === user?.fullName 
+                    ? 'bg-indigo-600 ml-auto' 
+                    : 'bg-zinc-800 mr-auto border border-zinc-700'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="h-6 w-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold">
+                    {msg.username.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col">
+                    <p className="text-xs font-medium">
+                      {msg.username}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm">{msg.message}</p>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </ScrollArea>
+          <Separator className="bg-zinc-800" />
+          <div className="p-3">
+            <div className="flex items-center gap-2 bg-zinc-800 rounded-lg p-1 border border-zinc-700 focus-within:border-indigo-500 transition-colors">
+              <Input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type a message..."
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                className="bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 w-full"
+              />
+              <Button 
+                onClick={handleSendMessage} 
+                size="sm"
+                className="bg-indigo-600 hover:bg-indigo-700 rounded-md p-2 h-8 w-8"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</TooltipProvider>
+);
 }
- 
