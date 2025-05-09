@@ -20,14 +20,12 @@ import {
   Users,
   Terminal,
   Save,
-  Mic, 
-  MicOff, 
-  Video, 
+  Mic,
+  MicOff,
+  Video,
   VideoOff,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
 
 interface Message {
   id: number;
@@ -57,15 +55,14 @@ interface UserLeftRoomData {
   userCount?: number;
 }
 
-// WebRTC interfaces
-interface PeerConnection {
-  userId: string;
-  connection: RTCPeerConnection;
-}
-
-interface RemotePeer {
-  userId: string;
-  username?: string;
+interface SignalData {
+  fromId: string;
+  targetId?: string;
+  signal: {
+    sdp?: RTCSessionDescriptionInit;
+    candidate?: RTCIceCandidateInit;
+  };
+  roomId: string;
 }
 
 // --- Constants ---
@@ -83,11 +80,15 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// WebRTC configuration
-const rtcConfiguration = {
+const rtcConfiguration: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls: "turn:relay1.expressturn.com:3480",
+      username: "174672021752747357",
+      credential: "DQyQiIIXACHLuNljl0XLUq8Xc3E=",
+    },
   ],
 };
 
@@ -114,452 +115,186 @@ export default function CodeCollabRoom() {
   // WebRTC State
   const [activeMic, setActiveMic] = useState<boolean>(false);
   const [activeVideo, setActiveVideo] = useState<boolean>(false);
-  const [connections, setConnections] = useState<PeerConnection[]>([]);
-  const [remoteStreams, setRemoteStreams] = useState<{[key: string]: MediaStream}>({});
-  const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
+  const [connections, setConnections] = useState<{
+    [key: string]: RTCPeerConnection;
+  }>({});
+  const [remoteStreams, setRemoteStreams] = useState<{
+    [key: string]: MediaStream;
+  }>({});
+  const [remotePeers, setRemotePeers] = useState<string[]>([]);
   const [isSettingUpMedia, setIsSettingUpMedia] = useState<boolean>(false);
 
   // --- Refs ---
   const editorRef = useRef<any>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // WebRTC Refs
   const localStreamRef = useRef<MediaStream | null>(null);
   const mediaLockRef = useRef<boolean>(false);
-  const pendingCandidatesRef = useRef<{[key: string]: RTCIceCandidate[]}>({});
+  const pendingCandidatesRef = useRef<{
+    [key: string]: RTCIceCandidateInit[];
+  }>({});
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
-  // --- Editor and Core Logic Callbacks ---
-  const handleEditorDidMount = (editor: any) => {
-    editorRef.current = editor;
-  };
-
-  const handleEditorChange = useCallback(
-    (value: string | undefined) => {
-      if (value === undefined) return;
-      setCode(value);
-      socket.emit("code_change", { roomId, code: value, userId: user?.id });
-    },
-    [roomId, user?.id]
-  );
-
-  const handleCursorChange = useCallback(
-    (position: { lineNumber: number; column: number }) => {
-      socket.emit("cursor_change", {
-        roomId,
-        userId: user?.id,
-        position,
-      });
-    },
-    [roomId, user?.id]
-  );
-
-  const handleLanguageChange = useCallback(
-    (language: string) => {
-      setSelectedLanguage(language);
-      socket.emit("language_change", { roomId, language, userId: user?.id });
-    },
-    [roomId, user?.id]
-  );
-
-  const handleSendMessage = useCallback(async () => {
-    if (newMessage.trim() && user) {
-      try {
-        const response = await api.post(`/rooms/${roomId}/messages`, {
-          message: newMessage,
-          username: user.username || user.id,
-        });
-        // Message will be broadcasted via socket, no need to setMessages here
-        setNewMessage("");
-      } catch (error) {
-        console.error("Failed to send message:", error);
-      }
-    }
-  }, [newMessage, roomId, user]);
-
-  const handleRunCode = useCallback(async () => {
-    setIsRunning(true);
-    setOutput("Running code...");
-    try {
-      const response = await api.post("/execute", {
-        language: selectedLanguage,
-        code,
-      });
-      setOutput(response.data.output);
-    } catch (error: any) {
-      setOutput(
-        `Error: ${error.response?.data?.error || error.message || "Unknown error"}`
-      );
-    } finally {
-      setIsRunning(false);
-      setActiveTab("output");
-    }
-  }, [code, selectedLanguage]);
-
-  const handleSaveCode = useCallback(async () => {
-    if (!isOwner) {
-      alert("Only the room owner can save the code.");
-      return;
-    }
-    setIsRunningSave(true);
-    try {
-      await api.post(`/rooms/${roomId}/code`, { code, language: selectedLanguage });
-      socket.emit("code_saved_confirmation", { roomId }); // Inform others
-      alert("Code saved successfully!");
-    } catch (error) {
-      console.error("Failed to save code:", error);
-      alert("Failed to save code.");
-    } finally {
-      setIsRunningSave(false);
-    }
-  }, [code, selectedLanguage, roomId, isOwner]);
-
-  const handleLeaveRoom = useCallback(() => {
-    // Clean up WebRTC connections
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-      localStreamRef.current = null;
-    }
-    
-    connections.forEach(peer => {
-      peer.connection.close();
-    });
-    setConnections([]);
-    setRemoteStreams({});
-    
-    socket.emit("leave_room", { roomId, userId: user?.id });
-    router.push("/");
-  }, [roomId, user?.id, router, connections]);
-
-  const handleRefreshCode = useCallback(async () => {
-    try {
-      const response = await api.get(`/rooms/${roomId}/code`);
-      const { code: fetchedCode, language: fetchedLanguage } = response.data;
-      setCode(fetchedCode);
-      setSelectedLanguage(fetchedLanguage);
-      if (editorRef.current) {
-         editorRef.current.setValue(fetchedCode);
-      }
-      socket.emit("code_change", { roomId, code: fetchedCode, userId: user?.id });
-      socket.emit("language_change", { roomId, language: fetchedLanguage, userId: user?.id });
-    } catch (error) {
-      console.error("Failed to refresh code:", error);
-    }
-  }, [roomId, user?.id]);
-
-  // --- WebRTC functions ---
-  const toggleMicrophone = useCallback(async () => {
-    try {
-      if (mediaLockRef.current) return;
-      mediaLockRef.current = true;
-      
-      if (!activeMic) {
-        // Turn on mic
-        await setupUserMedia(true, activeVideo);
-        setActiveMic(true);
-      } else {
-        // Turn off mic
-        if (localStreamRef.current) {
-          localStreamRef.current.getAudioTracks().forEach(track => {
-            track.enabled = false;
-            track.stop();
-          });
-          
-          if (!activeVideo) {
-            localStreamRef.current = null;
-            if (localVideoRef.current) {
-              localVideoRef.current.srcObject = null;
-            }
-          } else {
-            // Keep video on but remove audio tracks
-            const videoTracks = localStreamRef.current.getVideoTracks();
-            if (videoTracks.length > 0) {
-              const newStream = new MediaStream();
-              videoTracks.forEach(track => newStream.addTrack(track));
-              localStreamRef.current = newStream;
-              if (localVideoRef.current) {
-                localVideoRef.current.srcObject = newStream;
-              }
-            }
-          }
-        }
-        setActiveMic(false);
-      }
-    } catch (error) {
-      console.error("Error toggling microphone:", error);
-      alert("Failed to toggle microphone. Please check your device permissions.");
-    } finally {
-      mediaLockRef.current = false;
-    }
-  }, [activeMic, activeVideo]);
-
-  const toggleVideo = useCallback(async () => {
-    try {
-      if (mediaLockRef.current) return;
-      mediaLockRef.current = true;
-      
-      if (!activeVideo) {
-        // Turn on video
-        await setupUserMedia(activeMic, true);
-        setActiveVideo(true);
-      } else {
-        // Turn off video
-        if (localStreamRef.current) {
-          localStreamRef.current.getVideoTracks().forEach(track => {
-            track.enabled = false;
-            track.stop();
-          });
-          
-          if (!activeMic) {
-            localStreamRef.current = null;
-            if (localVideoRef.current) {
-              localVideoRef.current.srcObject = null;
-            }
-          } else {
-            // Keep audio on but remove video tracks
-            const audioTracks = localStreamRef.current.getAudioTracks();
-            if (audioTracks.length > 0) {
-              const newStream = new MediaStream();
-              audioTracks.forEach(track => newStream.addTrack(track));
-              localStreamRef.current = newStream;
-              if (localVideoRef.current) {
-                localVideoRef.current.srcObject = newStream;
-              }
-            }
-          }
-        }
-        setActiveVideo(false);
-      }
-    } catch (error) {
-      console.error("Error toggling video:", error);
-      alert("Failed to toggle video. Please check your device permissions.");
-    } finally {
-      mediaLockRef.current = false;
-    }
-  }, [activeMic, activeVideo]);
-  
-  const setupUserMedia = async (audio: boolean, video: boolean) => {
-    try {
-      setIsSettingUpMedia(true);
-      
-      // Stop any existing streams
+  // --- WebRTC Core Logic ---
+  const cleanupMedia = useCallback(
+    (cleanupConnectionsFully = false): void => {
+      console.log("Cleaning up media. Full cleanup:", cleanupConnectionsFully);
       if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      
-      if (!audio && !video) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+          console.log("Local track stopped:", track.kind);
+        });
         localStreamRef.current = null;
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = null;
-        }
+      }
+
+      if (cleanupConnectionsFully) {
+        Object.values(connections).forEach((pc) => {
+          if (pc.signalingState !== "closed") {
+            pc.getSenders().forEach((sender) => {
+              if (sender.track && pc.signalingState !== "closed") {
+                try {
+                  pc.removeTrack(sender);
+                  console.log(
+                    "Removed track from peer connection during full cleanup:",
+                    sender.track.kind
+                  );
+                } catch (e) {
+                  console.warn("Error removing track during full cleanup:", e);
+                }
+              }
+            });
+          }
+        });
+      }
+    },
+    [connections]
+  );
+
+  const handleCall = useCallback(
+    async (peerId: string, peerConnection?: RTCPeerConnection): Promise<void> => {
+      const pc = peerConnection || connections[peerId];
+      if (!pc || !user?.id || pc.signalingState === "closed") {
+        console.warn(
+          `handleCall: PC not available, user not loaded, or PC closed for ${peerId}.`
+        );
         return;
       }
-      
-      // Get new media stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio,
-        video: video ? { width: 320, height: 240 } : false
-      });
-      
-      localStreamRef.current = stream;
-      
-      // Update local video element
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+      if (pc.signalingState === "have-local-offer") {
+        console.warn(
+          `handleCall: Already have local offer for ${peerId}, skipping.`
+        );
+        return;
       }
-      
-      // Add tracks to all existing peer connections
-      connections.forEach(peer => {
-        const { connection, userId } = peer;
-        stream.getTracks().forEach(track => {
-          connection.getSenders().forEach(sender => {
-            if (sender.track && sender.track.kind === track.kind) {
-              sender.replaceTrack(track);
-            } else {
-              connection.addTrack(track, stream);
-            }
-          });
-        });
-      });
-      
-    } catch (error) {
-      console.error("Error setting up user media:", error);
-      throw error;
-    } finally {
-      setIsSettingUpMedia(false);
-    }
-  };
-  
-  const createPeerConnection = useCallback((targetUserId: string) => {
-    if (!user?.id || targetUserId === user.id) return null;
-    
-    console.log(`Creating peer connection with ${targetUserId}`);
-    
-    const peerConnection = new RTCPeerConnection(rtcConfiguration);
-    
-    // Add tracks from local stream to peer connection
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStreamRef.current!);
-      });
-    }
-    
-    // Handle ICE candidates
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
+
+      try {
+        console.log(`Creating offer for ${peerId}`);
+        const offer = await pc.createOffer();
+        if (pc.connectionState !== 'closed') {
+          console.warn(
+            `handleCall: Signaling state changed before setLocalDescription for ${peerId}. Current: ${pc.signalingState}`
+          );
+          return;
+        }
+        await pc.setLocalDescription(offer);
+
         socket.emit("signal", {
-          type: "ice-candidate",
-          candidate: event.candidate,
-          from: user.id,
-          to: targetUserId,
-          roomId
+          roomId,
+          signal: { sdp: pc.localDescription },
+          fromId: user.id,
+          targetId: peerId,
         });
+      } catch (error) {
+        console.error(`Error creating offer for ${peerId}:`, error);
       }
-    };
-    
-    // Handle incoming tracks
-    peerConnection.ontrack = (event) => {
-      console.log(`Received tracks from ${targetUserId}`);
-      
-      setRemoteStreams(prev => {
-        // If we already have a stream for this user, update it
-        if (prev[targetUserId]) {
-          event.streams[0].getTracks().forEach(track => {
-            prev[targetUserId].addTrack(track);
+    },
+    [connections, roomId, user?.id]
+  );
+
+  const createPeerConnection = useCallback(
+    (peerId: string): RTCPeerConnection => {
+      console.log(`Creating new RTCPeerConnection for peer: ${peerId}`);
+      const pc = new RTCPeerConnection(rtcConfiguration);
+
+      pc.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
+        if (event.candidate && user?.id) {
+          socket.emit("signal", {
+            roomId,
+            signal: { candidate: event.candidate.toJSON() },
+            fromId: user.id,
+            targetId: peerId,
           });
-          return {...prev};
-        } 
-        // Otherwise create a new stream entry
-        else {
-          return {
+        }
+      };
+
+      pc.ontrack = (event: RTCTrackEvent) => {
+        console.log(
+          `Track received from ${peerId}:`,
+          event.track.kind,
+          "Stream IDs:",
+          event.streams.map((s) => s.id)
+        );
+        if (event.streams && event.streams[0]) {
+          setRemoteStreams((prev) => ({
             ...prev,
-            [targetUserId]: event.streams[0]
-          };
+            [peerId]: event.streams[0],
+          }));
+        } else {
+          console.warn(
+            `No stream found in ontrack event for ${peerId}. Creating new stream for track.`
+          );
+          const inboundStream = new MediaStream();
+          inboundStream.addTrack(event.track);
+          setRemoteStreams((prev) => ({
+            ...prev,
+            [peerId]: inboundStream,
+          }));
         }
-      });
-    };
-    
-    // Handle connection state changes
-    peerConnection.onconnectionstatechange = () => {
-      if (peerConnection.connectionState === 'disconnected' || 
-          peerConnection.connectionState === 'failed' || 
-          peerConnection.connectionState === 'closed') {
-        console.log(`Connection with ${targetUserId} closed or failed`);
-        setConnections(prev => prev.filter(conn => conn.userId !== targetUserId));
-        setRemoteStreams(prev => {
-          const newStreams = {...prev};
-          delete newStreams[targetUserId];
-          return newStreams;
-        });
-      }
-    };
-    
-    // Add to connections list
-    setConnections(prev => [...prev.filter(conn => conn.userId !== targetUserId), 
-      { userId: targetUserId, connection: peerConnection }]);
-    
-    // Apply any pending ICE candidates
-    if (pendingCandidatesRef.current[targetUserId]) {
-      pendingCandidatesRef.current[targetUserId].forEach(candidate => {
-        peerConnection.addIceCandidate(candidate).catch(error => {
-          console.error("Error adding pending ICE candidate:", error);
-        });
-      });
-      delete pendingCandidatesRef.current[targetUserId];
-    }
-    
-    return peerConnection;
-  }, [roomId, user?.id]);
-  
-  const handleWebRTCSignal = useCallback(async (data: any) => {
-    if (!user?.id || data.to !== user.id) return;
-    
-    const { type, from, candidate, sdp } = data;
-    
-    // Find existing connection or create a new one
-    let peerConnection = connections.find(conn => conn.userId === from)?.connection;
-    
-    if (!peerConnection) {
-      const newPeerConnection = createPeerConnection(from);
-      if (!newPeerConnection) return;
-      peerConnection = newPeerConnection;
-      if (!peerConnection) return;
-    }
-    
-    try {
-      if (type === "offer") {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp }));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        socket.emit("signal", {
-          type: "answer",
-          sdp: answer.sdp,
-          from: user.id,
-          to: from,
-          roomId
-        });
-        
-      } else if (type === "answer") {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp }));
-        
-      } else if (type === "ice-candidate") {
-        try {
-          // If connection is not ready for candidates, store them
-          if (peerConnection.remoteDescription === null) {
-            if (!pendingCandidatesRef.current[from]) {
-              pendingCandidatesRef.current[from] = [];
+      };
+
+      pc.oniceconnectionstatechange = () =>
+        console.log(`ICE connection state for ${peerId}: ${pc.iceConnectionState}`);
+      pc.onsignalingstatechange = () =>
+        console.log(`Signaling state for ${peerId}: ${pc.signalingState}`);
+      pc.onconnectionstatechange = () => {
+        console.log(`Connection state for ${peerId}: ${pc.connectionState}`);
+        if (
+          pc.connectionState === "failed" ||
+          pc.connectionState === "disconnected" ||
+          pc.connectionState === "closed"
+        ) {
+          console.warn(`Connection with ${peerId} is ${pc.connectionState}.`);
+        }
+      };
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          if (track.readyState === "live") {
+            try {
+              pc.addTrack(track, localStreamRef.current!);
+            } catch (e) {
+              console.error(`Error adding track to PC for ${peerId}:`, e);
             }
-            pendingCandidatesRef.current[from].push(candidate);
-          } else {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
           }
-        } catch (err) {
-          console.error("Error adding ICE candidate:", err);
-        }
+        });
       }
-    } catch (error) {
-      console.error("Error handling WebRTC signal:", error);
-    }
-    
-  }, [connections, createPeerConnection, roomId, user?.id]);
-  
-  const initiateCall = useCallback(async (targetUserId: string) => {
-    if (!user?.id || targetUserId === user.id) return;
-    
-    try {
-      console.log(`Initiating call to ${targetUserId}`);
-      
-      // Create peer connection if it doesn't exist
-      let peerConnection = connections.find(conn => conn.userId === targetUserId)?.connection;
-      
-      if (!peerConnection) {
-        const newPeerConnection = createPeerConnection(targetUserId);
-        if (!newPeerConnection) return;
-        peerConnection = newPeerConnection;
-        if (!peerConnection) return;
+      return pc;
+    },
+    [roomId, user?.id]
+  );
+
+  const handleUserJoined = useCallback(
+    (joiningUserId: string): void => {
+      if (joiningUserId === user?.id || connections[joiningUserId]) return;
+
+      console.log(`User ${joiningUserId} joined. Creating peer connection.`);
+      const newPc = createPeerConnection(joiningUserId);
+      setConnections((prev) => ({ ...prev, [joiningUserId]: newPc }));
+
+      if (localStreamRef.current && (activeMic || activeVideo)) {
+        handleCall(joiningUserId, newPc);
       }
-      
-      // Create and send offer
-      const offer = await peerConnection.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true
-      });
-      
-      await peerConnection.setLocalDescription(offer);
-      
-      socket.emit("signal", {
-        type: "offer",
-        sdp: offer.sdp,
-        from: user.id,
-        to: targetUserId,
-        roomId
-      });
-      
-    } catch (error) {
-      console.error("Error initiating call:", error);
-    }
-  }, [connections, createPeerConnection, roomId, user?.id]);
+    },
+    [user?.id, connections, createPeerConnection, activeMic, activeVideo, handleCall]
+  );
 
   // --- Effects ---
   useEffect(() => {
@@ -568,52 +303,271 @@ export default function CodeCollabRoom() {
     }
   }, [messages]);
 
-  // Effect for WebRTC peer connections when remote peers change
   useEffect(() => {
-    const setupNewPeers = async () => {
-      if (!user?.id || !remotePeers.length || !activeMic && !activeVideo) return;
-      
-      // Make sure we have local media if needed
-      if ((activeMic || activeVideo) && !localStreamRef.current) {
-        try {
-          await setupUserMedia(activeMic, activeVideo);
-        } catch (error) {
-          console.error("Failed to set up local media:", error);
-          return;
+    if (isSettingUpMedia) return;
+
+    const setupOrTeardownMedia = async () => {
+      if (mediaLockRef.current) return;
+      mediaLockRef.current = true;
+      setIsSettingUpMedia(true);
+
+      try {
+        if (activeMic || activeVideo) {
+          let needsNewStream = !localStreamRef.current;
+          if (localStreamRef.current) {
+            const audioTracks = localStreamRef.current.getAudioTracks();
+            const videoTracks = localStreamRef.current.getVideoTracks();
+            if (
+              (activeMic && audioTracks.length === 0) ||
+              (!activeMic && audioTracks.length > 0 && audioTracks.some((t) => t.enabled))
+            ) {
+              needsNewStream = true;
+            }
+            if (
+              (activeVideo && videoTracks.length === 0) ||
+              (!activeVideo && videoTracks.length > 0 && videoTracks.some((t) => t.enabled))
+            ) {
+              needsNewStream = true;
+            }
+          }
+
+          if (needsNewStream) {
+            cleanupMedia(false);
+
+            const constraints: MediaStreamConstraints = {
+              audio: activeMic,
+              video: activeVideo ? { width: 320, height: 240 } : false,
+            };
+            console.log("Requesting media with constraints:", constraints);
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia(constraints);
+              localStreamRef.current = stream;
+
+              if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+              }
+
+              console.log("Local stream acquired:", stream.id);
+            } catch (error: any) {
+              console.error("Error accessing media devices:", error);
+              if (error instanceof DOMException) {
+                console.error(`DOMException: ${error.name} - ${error.message}`);
+                if (error.name === "NotAllowedError" || error.name === "NotFoundError") {
+                  setActiveMic(false);
+                  setActiveVideo(false);
+                } else {
+                  if (constraints.audio) setActiveMic(false);
+                  if (constraints.video) setActiveVideo(false);
+                }
+              } else {
+                setActiveMic(false);
+                setActiveVideo(false);
+              }
+              localStreamRef.current = null;
+            }
+          }
+        } else {
+          cleanupMedia(true);
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = null;
+          }
         }
-      }
-      
-      // Initiate calls to any new peers
-      for (const peer of remotePeers) {
-        if (!connections.some(conn => conn.userId === peer.userId)) {
-          await initiateCall(peer.userId);
-        }
+      } finally {
+        mediaLockRef.current = false;
+        setIsSettingUpMedia(false);
       }
     };
-    
-    setupNewPeers();
-  }, [remotePeers, connections, activeMic, activeVideo, initiateCall, user?.id]);
+    setupOrTeardownMedia();
+  }, [activeMic, activeVideo, cleanupMedia, isSettingUpMedia]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log("Media state or connections changed. Updating peer connections.");
+    Object.entries(connections).forEach(([peerId, pc]) => {
+      if (pc.signalingState === "closed") return;
+
+      let renegotiationNeeded = false;
+      const currentStream = localStreamRef.current;
+
+      const audioTrack =
+        currentStream && activeMic ? currentStream.getAudioTracks()[0] : null;
+      const audioSender = pc.getSenders().find((s) => s.track && s.track.kind === "audio");
+      if (audioTrack) {
+        if (audioSender) {
+          if (audioSender.track !== audioTrack) {
+            audioSender
+              .replaceTrack(audioTrack)
+              .then(() => console.log(`Audio track replaced for ${peerId}`))
+              .catch((e) => console.error(`Audio replaceTrack failed for ${peerId}`, e));
+          }
+        } else {
+          pc.addTrack(audioTrack, currentStream!);
+          console.log(`Audio track added for ${peerId}`);
+          renegotiationNeeded = true;
+        }
+      } else if (audioSender) {
+        try {
+          if (pc.connectionState !== 'closed') pc.removeTrack(audioSender);
+          console.log(`Audio track removed for ${peerId}`);
+          renegotiationNeeded = true;
+        } catch (e) {
+          console.warn(`Error removing audio sender for ${peerId}`, e);
+        }
+      }
+
+      const videoTrack =
+        currentStream && activeVideo ? currentStream.getVideoTracks()[0] : null;
+      const videoSender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+      if (videoTrack) {
+        if (videoSender) {
+          if (videoSender.track !== videoTrack) {
+            videoSender
+              .replaceTrack(videoTrack)
+              .then(() => console.log(`Video track replaced for ${peerId}`))
+              .catch((e) => console.error(`Video replaceTrack failed for ${peerId}`, e));
+          }
+        } else {
+          pc.addTrack(videoTrack, currentStream!);
+          console.log(`Video track added for ${peerId}`);
+          renegotiationNeeded = true;
+        }
+      } else if (videoSender) {
+        try {
+          if (pc.connectionState !== 'closed') pc.removeTrack(videoSender);
+          console.log(`Video track removed for ${peerId}`);
+          renegotiationNeeded = true;
+        } catch (e) {
+          console.warn(`Error removing video sender for ${peerId}`, e);
+        }
+      }
+
+      if (
+        renegotiationNeeded &&
+        pc.signalingState !== "have-local-offer" &&
+        pc.connectionState !== 'closed'
+      ) {
+        console.log(`Requesting renegotiation with ${peerId} due to track changes.`);
+        handleCall(peerId, pc);
+      }
+    });
+  }, [connections, handleCall, user?.id, activeMic, activeVideo]);
 
   useEffect(() => {
     if (!roomId || !user?.id) return;
 
-    console.log(`User ${user.id} attempting to join room ${roomId}`);
-    socket.emit("join_room", { roomId, userId: user.id, username: user.username });
+    const onSignal = async (data: SignalData): Promise<void> => {
+      if (data.roomId !== roomId || (data.targetId && data.targetId !== user.id))
+        return;
+      if (data.fromId === user.id) return;
 
-    // Socket event handlers
-    const onConnect = () => console.log("Socket connected");
-    const onDisconnect = () => console.log("Socket disconnected");
-    
-    const onRoomJoined = (data: { userCount: number, isOwner: boolean, initialCode?: string, initialLanguage?: string, peers?: { userId: string, username?: string }[] }) => {
-      console.log("Successfully joined room:", data);
-      setUserNumber(data.userCount);
-      setIsOwner(data.isOwner);
-      if (data.initialCode && editorRef.current && editorRef.current.getValue() !== data.initialCode) {
-        setCode(data.initialCode);
-        if (editorRef.current) editorRef.current.setValue(data.initialCode);
+      const { fromId, signal } = data;
+      let pc = connections[fromId];
+
+      if (!pc || pc.signalingState === "closed") {
+        console.log(
+          `Received signal from ${pc ? "closed" : "new"} peer ${fromId}. Creating/re-creating connection.`
+        );
+        pc = createPeerConnection(fromId);
+        setConnections((prev) => ({ ...prev, [fromId]: pc }));
       }
-      if (data.initialLanguage) {
-        setSelectedLanguage(data.initialLanguage);
+
+      try {
+        if (signal.sdp) {
+          console.log(`Received SDP (${signal.sdp.type}) from ${fromId}`);
+          if (
+            signal.sdp.type === "offer" &&
+            pc.signalingState === "have-local-offer"
+          ) {
+            console.warn(
+              `Glare: Received offer from ${fromId} while in state ${pc.signalingState}.`
+            );
+          }
+
+          if (
+            !(
+              pc.signalingState === "have-local-offer" &&
+              signal.sdp.type === "offer"
+            )
+          ) {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+          } else if (
+            pc.signalingState === "have-local-offer" &&
+            signal.sdp.type === "offer"
+          ) {
+            console.log(
+              "Skipping setRemoteDescription for incoming offer due to glare and local offer presence."
+            );
+          }
+
+          if (pendingCandidatesRef.current[fromId]) {
+            console.log(
+              `Processing ${pendingCandidatesRef.current[fromId].length} queued ICE candidates for ${fromId}`
+            );
+            for (const candidate of pendingCandidatesRef.current[fromId]) {
+              try {
+                if (pc.remoteDescription && pc.signalingState !== "closed") {
+                  await pc.addIceCandidate(candidate);
+                } else {
+                  console.warn(
+                    `Cannot add queued ICE candidate for ${fromId}, remoteDescription not set or PC closed.`
+                  );
+                }
+              } catch (e) {
+                console.error(`Error adding queued ICE candidate for ${fromId}:`, e);
+              }
+            }
+            delete pendingCandidatesRef.current[fromId];
+          }
+
+          if (
+            signal.sdp.type === "offer" &&
+            pc.signalingState !== "have-local-offer" &&
+            pc.signalingState !== "closed"
+          ) {
+            const answer = await pc.createAnswer();
+            if (pc.connectionState !== 'closed') {
+              await pc.setLocalDescription(answer);
+              socket.emit("signal", {
+                roomId,
+                signal: { sdp: pc.localDescription },
+                fromId: user.id,
+                targetId: fromId,
+              });
+              console.log(`Sent answer to ${fromId}`);
+            } else {
+              console.warn(`PC for ${fromId} closed before sending answer.`);
+            }
+          }
+        } else if (signal.candidate) {
+          const candidate = new RTCIceCandidate(signal.candidate);
+          if (pc.remoteDescription && pc.signalingState !== "closed") {
+            await pc.addIceCandidate(candidate);
+          } else {
+            pendingCandidatesRef.current[fromId] = [
+              ...(pendingCandidatesRef.current[fromId] || []),
+              candidate,
+            ];
+            console.log(
+              `Queued ICE candidate from ${fromId} (Remote desc not set or PC closed)`
+            );
+          }
+        }
+      } catch (error: any) {
+        console.error(
+          `Error handling WebRTC signal from ${fromId}:`,
+          error.name,
+          error.message,
+          signal
+        );
+        if (error.name === "InvalidStateError" || error.message.includes("Rollback")) {
+          console.warn(
+            `Signaling error with ${fromId}, state: ${pc.signalingState}. Consider manual intervention or specific error handling.`,
+            error
+          );
+        }
       }
       // Set initial remote peers
       if (data.peers) {
@@ -623,403 +577,498 @@ export default function CodeCollabRoom() {
 
     const onUserJoinedRoom = (data: UserJoinedRoomData): void => {
       if (data.userId && data.userId !== user?.id) {
-        console.log(`User ${data.username || data.userId} joined. Current count: ${data.userCount}`);
+        setRemotePeers((prev) => (prev.includes(data.userId) ? prev : [...prev, data.userId]));
+        handleUserJoined(data.userId);
         if (data.userCount !== undefined) setUserNumber(data.userCount);
-        
-        // Add to remote peers
-        setRemotePeers(prev => {
-          if (prev.some(peer => peer.userId === data.userId)) {
-            return prev;
-          }
-          return [...prev, { userId: data.userId, username: data.username }];
-        });
-      } else if (data.userId === user?.id && data.userCount !== undefined) {
-        setUserNumber(data.userCount);
       }
     };
 
     const onUserLeftRoom = (data: UserLeftRoomData): void => {
       if (data.userId && data.userId !== user?.id) {
-        console.log(`User ${data.userId} left. Current count: ${data.userCount}`);
-        if (data.userCount !== undefined) setUserNumber(data.userCount);
-        
-        // Remove from remote peers
-        setRemotePeers(prev => prev.filter(peer => peer.userId !== data.userId));
-        
-        // Close and remove the connection
-        const peerConnection = connections.find(conn => conn.userId === data.userId);
-        if (peerConnection) {
-          peerConnection.connection.close();
-          setConnections(prev => prev.filter(conn => conn.userId !== data.userId));
+        console.log(`User ${data.userId} left. Cleaning up WebRTC connection.`);
+        if (connections[data.userId]) {
+          connections[data.userId].close();
+          setConnections((prev) => {
+            const newConns = { ...prev };
+            delete newConns[data.userId];
+            return newConns;
+          });
         }
-        
-        // Remove remote stream
-        setRemoteStreams(prev => {
-          const newStreams = {...prev};
-          if (newStreams[data.userId]) {
-            delete newStreams[data.userId];
-          }
+        setRemoteStreams((prev) => {
+          const newStreams = { ...prev };
+          delete newStreams[data.userId];
           return newStreams;
+        });
+        setRemotePeers((prev) => prev.filter((id) => id !== data.userId));
+        delete pendingCandidatesRef.current[data.userId];
+        if (data.userCount !== undefined) setUserNumber(data.userCount);
+      }
+    };
+
+    socket.on("signal", onSignal);
+    socket.on("user_joined_room", onUserJoinedRoom);
+    socket.on("user_left_room", onUserLeftRoom);
+
+    return () => {
+      socket.off("signal", onSignal);
+      socket.off("user_joined_room", onUserJoinedRoom);
+      socket.off("user_left_room", onUserLeftRoom);
+    };
+  }, [roomId, user?.id, connections, createPeerConnection, handleUserJoined]);
+
+  useEffect(() => {
+    if (!roomId || !user?.fullName || !user?.id) return;
+
+    socket.emit("join_room", { roomId, username: user.fullName, userId: user.id });
+    socket.emit("get_user_count", { roomId });
+
+    const onReceiveMessage = (data: Message) => setMessages((prev) => [...prev, data]);
+    const onReceiveCode = (data: { code: string }) =>
+      setCode((prevCode) => (prevCode === data.code ? prevCode : data.code));
+    const onReceiveCursor = (data: RemoteCursor & { username: string }) => {
+      if (data.username !== user?.fullName) {
+        setRemoteCursors((prev) => {
+          const updated = prev.filter((cursor) => cursor.userId !== data.username);
+          return [
+            ...updated,
+            { userId: data.username, lineNumber: data.lineNumber, column: data.column },
+          ];
         });
       }
     };
-    
-    const onSignal = (data: any) => {
-      handleWebRTCSignal(data);
-    };
-    
-    const onUserCodeChange = (data: { userId: string; code: string }) => {
-      if (data.userId !== user?.id) {
-        setCode(data.code);
-        if (editorRef.current && editorRef.current.getValue() !== data.code) {
-          const currentPosition = editorRef.current.getPosition();
-          editorRef.current.setValue(data.code);
-          if (currentPosition) editorRef.current.setPosition(currentPosition);
-        }
-      }
-    };
+    const onUserCount = (data: UserCountData) => setUserNumber(data.count);
+    const onUserCountUpdate = (data: UserCountData) => setUserNumber(data.count);
 
-    const onUserCursorChange = (data: { userId: string; position: { lineNumber: number; column: number } }) => {
-      if (data.userId !== user?.id) {
-        setRemoteCursors((prev) =>
-          prev.filter((c) => c.userId !== data.userId).concat({
-            userId: data.userId,
-            lineNumber: data.position.lineNumber,
-            column: data.position.column
-          })
-        );
-      }
-    };
-    
-    const onUserLanguageChange = (data: { userId: string; language: string }) => {
-      if (data.userId !== user?.id) {
-        setSelectedLanguage(data.language);
-      }
-    };
-
-    const onCodeSaved = () => {
-      alert("The room owner has saved the code.");
-      handleRefreshCode(); // Refresh to get the latest saved version
-    };
-
-    const onReceiveMessage = (message: Message) => {
-      setMessages((prevMessages) => [...prevMessages, message]);
-    };
-    
-    const onUserCountUpdate = (data: UserCountData) => {
-      setUserNumber(data.count);
-    };
-
-    const onSetOwner = (data: { ownerId: string }) => {
-      setIsOwner(data.ownerId === user?.id);
-    };
-
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("room_joined", onRoomJoined);
-    socket.on("user_joined_room", onUserJoinedRoom);
-    socket.on("user_left_room", onUserLeftRoom);
-    socket.on("signal", onSignal);
-    socket.on("user_code_change", onUserCodeChange);
-    socket.on("user_cursor_change", onUserCursorChange);
-    socket.on("user_language_change", onUserLanguageChange);
-    socket.on("code_saved", onCodeSaved);
     socket.on("receive_message", onReceiveMessage);
+    socket.on("receive_code", onReceiveCode);
+    socket.on("receive_cursor", onReceiveCursor);
+    socket.on("user_count", onUserCount);
     socket.on("user_count_update", onUserCountUpdate);
-    socket.on("set_owner", onSetOwner);
-
-    // Fetch initial messages
-    api.get(`/rooms/${roomId}/messages`)
-      .then(response => setMessages(response.data))
-      .catch(error => console.error("Failed to fetch initial messages:", error));
-
-    // Fetch initial code
-     api.get(`/rooms/${roomId}/code`)
-      .then(response => {
-        const { code: initialCode, language: initialLanguage, ownerId } = response.data;
-        if (editorRef.current && editorRef.current.getValue() !== initialCode) {
-            setCode(initialCode);
-            if (editorRef.current) editorRef.current.setValue(initialCode);
-        }
-        setSelectedLanguage(initialLanguage);
-        setIsOwner(ownerId === user?.id);
-      })
-      .catch(error => console.error("Failed to fetch initial code:", error));
-
 
     return () => {
-      console.log("Cleaning up CodeCollabRoom effects, leaving room:", roomId);
-      
-      // Clean up WebRTC
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      
-      connections.forEach(peer => {
-        peer.connection.close();
-      });
-      
-      socket.emit("leave_room", { roomId, userId: user?.id });
-      
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("room_joined", onRoomJoined);
-      socket.off("user_joined_room", onUserJoinedRoom);
-      socket.off("user_left_room", onUserLeftRoom);
-      socket.off("signal", onSignal);
-      socket.off("user_code_change", onUserCodeChange);
-      socket.off("user_cursor_change", onUserCursorChange);
-      socket.off("user_language_change", onUserLanguageChange);
-      socket.off("code_saved", onCodeSaved);
       socket.off("receive_message", onReceiveMessage);
+      socket.off("receive_code", onReceiveCode);
+      socket.off("receive_cursor", onReceiveCursor);
+      socket.off("user_count", onUserCount);
       socket.off("user_count_update", onUserCountUpdate);
-      socket.off("set_owner", onSetOwner);
-    };
-  }, [roomId, user, router, isOwner, handleRefreshCode, connections, handleWebRTCSignal]); 
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        Loading user...
-      </div>
-    );
-  }
+      console.log("Main socket effect cleanup: Leaving room and full cleanup.");
+      cleanupMedia(true);
+      Object.values(connections).forEach((conn) => {
+        if (conn.signalingState !== "closed") conn.close();
+      });
+      setConnections({});
+      setRemoteStreams({});
+      setRemotePeers([]);
+      pendingCandidatesRef.current = {};
+      if (user?.id && user.fullName) {
+        socket.emit("leave_room", {
+          roomId,
+          username: user.fullName,
+          userId: user.id,
+        });
+      }
+    };
+  }, [roomId, user?.id, user?.fullName, cleanupMedia, connections]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!roomId || !user?.id) return;
+      try {
+        const [messagesRes, codeRes, ownerRes] = await Promise.all([
+          api.get(`/rooms/${roomId}/messages`),
+          api.get(`/rooms/${roomId}/code`),
+          api.get(`/rooms/${roomId}/owner`),
+        ]);
+        setMessages(messagesRes.data as Message[]);
+        if (codeRes.data?.[0]?.code) setCode(codeRes.data[0].code as string);
+        setIsOwner(ownerRes.data === user.id);
+      } catch (error) {
+        console.error("Error loading initial data:", error);
+      }
+    };
+    loadData();
+  }, [roomId, user?.id]);
+
+  // --- Action Handlers ---
+  const handleMicClick = (): void => {
+    if (isSettingUpMedia) return;
+    setActiveMic((prev) => !prev);
+  };
+
+  const handleVideoClick = (): void => {
+    if (isSettingUpMedia) return;
+    setActiveVideo((prev) => !prev);
+  };
+
+  const handleEditorChange = (value: string | undefined): void => {
+    if (value !== undefined) {
+      setCode(value);
+      socket.emit("send_code", { roomId, code: value });
+    }
+  };
+
+  const handleMount = (editor: any, monacoInstance: any): void => {
+    editorRef.current = editor;
+    editor.onDidChangeCursorPosition((e: any) => {
+      const { lineNumber, column } = e.position;
+      if (user?.fullName) {
+        socket.emit("send_cursor", {
+          roomId,
+          lineNumber,
+          column,
+          username: user.fullName,
+        });
+      }
+    });
+  };
+
+  const handleLogout = (): void => {
+    cleanupMedia(true);
+    Object.values(connections).forEach((conn) => {
+      if (conn.signalingState !== "closed") conn.close();
+    });
+    setConnections({});
+    setRemoteStreams({});
+    setRemotePeers([]);
+    pendingCandidatesRef.current = {};
+    if (user?.id && user.fullName) {
+      socket.emit("leave_room", {
+        roomId,
+        username: user.fullName,
+        userId: user.id,
+      });
+    }
+    router.push("/dashboard");
+  };
+
+  const saveCode = async (): Promise<void> => {
+    if (!isOwner) return;
+    setIsRunningSave(true);
+    try {
+      await api.post("/save", { code, roomId });
+    } catch (error) {
+      console.error("Error saving code:", error);
+    } finally {
+      setIsRunningSave(false);
+    }
+  };
+
+  const runCode = async (): Promise<void> => {
+    setIsRunning(true);
+    setOutput("Running code...");
+    try {
+      const response = await api.post<{ output?: string; error?: string }>(
+        "/run",
+        { code, language: selectedLanguage }
+      );
+      setOutput(
+        response.data.output || response.data.error || "Code executed successfully, no output."
+      );
+    } catch (error: any) {
+      setOutput(error.response?.data?.error || error.message || "Failed to run code");
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleSubmitMessage = (e: React.FormEvent): void => {
+    e.preventDefault();
+    if (!newMessage.trim() || !user?.fullName) return;
+    socket.emit("send_message", {
+      roomId,
+      text: newMessage,
+      username: user.fullName,
+    });
+    setNewMessage("");
+  };
+
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-screen bg-gray-900 text-white">
+      <div className="flex flex-col h-screen bg-background text-foreground font-sans">
         {/* Header */}
-        <header className="p-3 border-b border-gray-700 flex flex-wrap gap-3 justify-between items-start sm:items-center">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-3">
-              <Code className="h-6 w-6 text-blue-400" />
-              <h1 className="text-xl font-semibold">
-                Room: <span className="text-blue-400">{roomId}</span>
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              <span>{userNumber}</span>
+        <header className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary/10 to-secondary/10">
+          <div className="flex items-center gap-3">
+            <Code className="h-6 w-6 text-primary" />
+            <h1 className="text-xl font-bold tracking-tight">CodeCollab</h1>
+            <Separator orientation="vertical" className="h-6 mx-2" />
+            <div className="text-sm text-muted-foreground">
+              Room: <span className="font-semibold text-foreground">{roomId}</span>
             </div>
           </div>
-  
-          {/* WebRTC Controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={activeMic ? "default" : "outline"}
-                  size="sm"
-                  className={activeMic ? "bg-green-600 hover:bg-green-700" : ""}
-                  onClick={toggleMicrophone}
+                  variant={activeMic ? "secondary" : "outline"}
+                  size="icon"
+                  onClick={handleMicClick}
                   disabled={isSettingUpMedia}
+                  className="h-9 w-9 rounded-full"
                 >
-                  {activeMic ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  {activeMic ? (
+                    <Mic className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <MicOff className="h-5 w-5 text-red-500" />
+                  )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent><p>{activeMic ? "Mute Microphone" : "Unmute Microphone"}</p></TooltipContent>
+              <TooltipContent>{activeMic ? "Disable Microphone" : "Enable Microphone"}</TooltipContent>
             </Tooltip>
-  
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={activeVideo ? "default" : "outline"}
-                  size="sm"
-                  className={activeVideo ? "bg-green-600 hover:bg-green-700" : ""}
-                  onClick={toggleVideo}
+                  variant={activeVideo ? "secondary" : "outline"}
+                  size="icon"
+                  onClick={handleVideoClick}
                   disabled={isSettingUpMedia}
+                  className="h-9 w-9 rounded-full"
                 >
-                  {activeVideo ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                  {activeVideo ? (
+                    <Video className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <VideoOff className="h-5 w-5 text-red-500" />
+                  )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent><p>{activeVideo ? "Turn Off Camera" : "Turn On Camera"}</p></TooltipContent>
+              <TooltipContent>{activeVideo ? "Disable Camera" : "Enable Camera"}</TooltipContent>
+            </Tooltip>
+            <div className="flex items-center gap-2 bg-secondary/20 px-3 py-1 rounded-full">
+              <Users className="h-4 w-4 text-green-500" />
+              <span className="text-sm font-medium">{userNumber} Active</span>
+            </div>
+            {isOwner && (
+              <div className="px-3 py-1 rounded-full bg-green-500/20 text-green-900 text-sm font-medium">
+                Owner
+              </div>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 hover:bg-destructive/10 hover:border-destructive"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Leave</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Leave Room</TooltipContent>
             </Tooltip>
           </div>
-  
-          <Button variant="destructive" size="sm" onClick={handleLeaveRoom} className="flex items-center mt-2 sm:mt-0">
-            <LogOut className="mr-2 h-4 w-4" /> Leave Room
-          </Button>
         </header>
-    
+
         {/* Main Content */}
-        <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-          {/* Left Pane */}
-          <div className="flex flex-col flex-1 w-full lg:w-2/3 p-2 space-y-2">
-            {/* Video Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 bg-gray-800 p-2 rounded-md h-40 overflow-y-auto">
-              {/* Local Video */}
-              <div className="relative bg-gray-700 rounded overflow-hidden flex items-center justify-center">
-                {activeVideo ? (
-                  <video 
-                    ref={localVideoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full w-full">
-                    <User className="h-8 w-8 mb-1" />
-                    <span className="text-xs">{user?.username || "You"} {activeMic ? "(Audio On)" : ""}</span>
-                  </div>
-                )}
-              </div>
-              
-              {/* Remote Videos */}
-              {Object.entries(remoteStreams).map(([userId, stream]) => {
-                const peer = remotePeers.find(p => p.userId === userId);
-                const hasVideo = stream.getVideoTracks().some(track => track.enabled);
-                
-                return (
-                  <div key={userId} className="relative bg-gray-700 rounded overflow-hidden flex items-center justify-center">
-                    {hasVideo ? (
-                      <video
-                        autoPlay
-                        playsInline
-                        className="h-full w-full object-cover"
-                        ref={video => {
-                          if (video) video.srcObject = stream;
-                        }}
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full w-full">
-                        <User className="h-8 w-8 mb-1" />
-                        <span className="text-xs">{peer?.username || userId.substring(0, 8)}</span>
-                        {stream.getAudioTracks().length > 0 && (
-                          <span className="text-xs text-green-400">(Audio On)</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+        <main className="flex flex-1 overflow-hidden">
+          {/* Chat Panel */}
+          <aside className="hidden lg:flex flex-col w-96 border-r bg-background">
+            <div className="flex items-center px-4 py-3 border-b">
+              <User className="h-5 w-5 mr-2 text-primary" />
+              <h2 className="text-lg font-semibold">Team Chat</h2>
             </div>
-  
-            {/* Editor Controls */}
-            <div className="flex flex-col md:flex-row justify-between gap-2 p-2 bg-gray-800 rounded-md">
-              <div className="flex flex-wrap gap-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={handleRunCode} disabled={isRunning}>
-                      {isRunning ? (
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Terminal className="mr-2 h-4 w-4" />
-                      )}
-                      Run
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Execute Code</p></TooltipContent>
-                </Tooltip>
-    
-                {isOwner && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="sm" onClick={handleSaveCode} disabled={isRunningSave}>
-                        {isRunningSave ? (
-                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="mr-2 h-4 w-4" />
-                        )}
-                        Save
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent><p>Save Code (Owner only)</p></TooltipContent>
-                  </Tooltip>
-                )}
-    
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={handleRefreshCode}>
-                      <RefreshCw className="mr-2 h-4 w-4" /> Refresh Code
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Fetch latest saved code</p></TooltipContent>
-                </Tooltip>
-              </div>
-    
-              <div className="w-full md:w-40">
-                <Select value={selectedLanguage} onValueChange={handleLanguageChange}>
-                  <SelectTrigger className="bg-gray-700 border-gray-600 w-full">
-                    <SelectValue placeholder="Language" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-700 text-white border-gray-600">
-                    <SelectItem value="python">Python</SelectItem>
-                    <SelectItem value="javascript">JavaScript</SelectItem>
-                    <SelectItem value="java">Java</SelectItem>
-                    <SelectItem value="csharp">C#</SelectItem>
-                    <SelectItem value="cpp">C++</SelectItem>
-                    <SelectItem value="ruby">Ruby</SelectItem>
-                    <SelectItem value="go">Go</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-    
-            {/* Editor */}
-            <div className="flex-1 min-h-[200px] rounded-md overflow-hidden">
-              <MonacoEditor
-                language={selectedLanguage}
-                value={code}
-                onChange={handleEditorChange}
-                onMount={handleEditorDidMount}
-                theme="vs-dark"
-              />
-            </div>
-    
-            {/* Output Tabs */}
-            <div className="h-48 md:h-1/4 lg:h-1/5 bg-gray-800 rounded-md">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-                <TabsList className="bg-gray-700 rounded-t-md rounded-b-none">
-                  <TabsTrigger value="output">Output</TabsTrigger>
-                  <TabsTrigger value="terminal" disabled>Terminal (Soon)</TabsTrigger>
-                </TabsList>
-                <TabsContent value="output" className="flex-1 overflow-auto p-2 text-sm bg-gray-800 rounded-b-md">
-                  <pre className="whitespace-pre-wrap">{output || "Code output will appear here."}</pre>
-                </TabsContent>
-                <TabsContent value="terminal" className="flex-1 overflow-auto p-2 text-sm bg-gray-800 rounded-b-md">
-                  <p>Interactive terminal coming soon!</p>
-                </TabsContent>
-              </Tabs>
-            </div>
-          </div>
-    
-          {/* Right Pane: Chat */}
-          <div className="flex flex-col w-full lg:w-1/3 p-2 border-t lg:border-t-0 lg:border-l border-gray-700">
-            <div className="flex flex-col flex-1 bg-gray-800 rounded-md overflow-hidden">
-              <h2 className="p-3 text-lg font-semibold border-b border-gray-700">Chat</h2>
-              <ScrollArea className="flex-1 p-3">
-                {messages.map((msg) => (
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4">
+                {messages.map((msg, index) => (
                   <div
-                    key={msg.id}
-                    className={`mb-3 p-2 rounded-lg max-w-xs break-words ${
-                      msg.username === user?.fullName ? 'bg-blue-600 ml-auto' : 'bg-gray-700 mr-auto'
+                    key={index}
+                    className={`flex flex-col ${
+                      msg.username === user?.fullName ? "items-end" : "items-start"
                     }`}
                   >
-                    <p className="text-xs text-gray-400 mb-1">
-                      {msg.username} - {new Date(msg.createdAt).toLocaleTimeString()}
-                    </p>
-                    <p>{msg.message}</p>
+                    <div
+                      className={`text-xs font-medium ${
+                        msg.username === user?.fullName ? "text-primary" : "text-muted-foreground"
+                      }`}
+                    >
+                      {msg.username === user?.fullName ? "You" : msg.username}
+                    </div>
+                    <div
+                      className={`max-w-[80%] rounded-xl px-4 py-2 text-sm shadow-sm ${
+                        msg.username === user?.fullName
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-foreground"
+                      }`}
+                    >
+                      {msg.message}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                    </div>
                   </div>
                 ))}
                 <div ref={messagesEndRef} />
-              </ScrollArea>
-              <Separator className="bg-gray-700" />
-              <div className="p-3 flex flex-col sm:flex-row gap-2">
-                <Input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  className="bg-gray-700 border-gray-600 focus:ring-blue-500 w-full"
-                />
-                <Button onClick={handleSendMessage} className="bg-blue-600 hover:bg-blue-700">
-                  <Send className="h-4 w-4" />
-                </Button>
               </div>
+            </ScrollArea>
+            <form onSubmit={handleSubmitMessage} className="flex p-4 border-t gap-2">
+              <Input
+                type="text"
+                placeholder="Type your message..."
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                className="flex-1 rounded-full"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="submit" size="icon" className="rounded-full">
+                    <Send className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Send Message</TooltipContent>
+              </Tooltip>
+            </form>
+          </aside>
+
+          {/* Editor & Tabs */}
+          <div className="flex flex-col flex-1">
+            {/* Editor */}
+            <div className="flex-1 border-b">
+              <MonacoEditor
+                height="100%"
+                language={selectedLanguage}
+                value={code}
+                onChange={handleEditorChange}
+                onMount={handleMount}
+                theme="vs-dark"
+                options={{
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  minimap: { enabled: false },
+                  contextmenu: false,
+                  fontSize: 14,
+                  lineNumbers: "on",
+                  glyphMargin: true,
+                }}
+              />
             </div>
+
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid grid-cols-3 w-full rounded-none border-b bg-secondary/10">
+                <TabsTrigger value="output" className="flex items-center gap-2">
+                  <Terminal className="h-4 w-4" /> Output
+                </TabsTrigger>
+                <TabsTrigger value="video" className="flex items-center gap-2">
+                  <Video className="h-4 w-4" /> Video
+                </TabsTrigger>
+                <TabsTrigger value="actions" className="flex items-center gap-2">
+                  <Check className="h-4 w-4" /> Actions
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="output" className="p-4 max-h-64 overflow-y-auto bg-background/50">
+                <pre className="whitespace-pre-wrap break-all font-mono text-sm text-muted-foreground">
+                  {output}
+                </pre>
+              </TabsContent>
+              <TabsContent value="video" className="p-4 bg-background/50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {activeVideo && (
+                    <div className="flex flex-col items-center">
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full max-w-xs h-48 bg-gray-900 rounded-lg shadow-lg object-cover"
+                      />
+                      <span className="text-sm text-muted-foreground mt-2">You</span>
+                    </div>
+                  )}
+                  {remotePeers.map((peerId) => {
+                    const stream = remoteStreams[peerId];
+                    if (!stream) return null;
+                    return (
+                      <div key={peerId} className="flex flex-col items-center">
+                        <video
+                          ref={(videoElement) => {
+                            if (videoElement && stream) {
+                              videoElement.srcObject = stream;
+                              videoElement.play().catch((e) => console.error("Video play failed:", e));
+                            }
+                          }}
+                          autoPlay
+                          playsInline
+                          className="w-full max-w-xs h-48 bg-gray-900 rounded-lg shadow-lg object-cover"
+                        />
+                        <span className="text-sm text-muted-foreground mt-2">{peerId}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!activeVideo && remotePeers.length === 0 && (
+                  <p className="text-center text-muted-foreground">
+                    Enable your camera or microphone to start a video call.
+                  </p>
+                )}
+              </TabsContent>
+              <TabsContent value="actions" className="p-4 bg-background/50">
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="language-select" className="text-sm font-medium">Language:</label>
+                    <select
+                      id="language-select"
+                      value={selectedLanguage}
+                      onChange={(e) => setSelectedLanguage(e.target.value)}
+                      className="p-2 border rounded-lg bg-background text-foreground text-sm focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="python">Python</option>
+                      <option value="javascript">JavaScript</option>
+                      <option value="typescript">TypeScript</option>
+                      <option value="java">Java</option>
+                      <option value="csharp">C#</option>
+                      <option value="cpp">C++</option>
+                      <option value="go">Go</option>
+                      <option value="rust">Rust</option>
+                      <option value="php">PHP</option>
+                    </select>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={runCode}
+                        disabled={isRunning}
+                        className="flex items-center gap-2"
+                      >
+                        {isRunning ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 animate-spin" /> Running...
+                          </>
+                        ) : (
+                          <>
+                            <Terminal className="h-4 w-4" /> Run Code
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Execute the code</TooltipContent>
+                  </Tooltip>
+                  {isOwner && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={saveCode}
+                          disabled={isRunningSave}
+                          className="flex items-center gap-2"
+                        >
+                          {isRunningSave ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 animate-spin" /> Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4" /> Save Code
+                            </>
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Save code to room</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
-        </div>
+        </main>
       </div>
     </TooltipProvider>
   );
